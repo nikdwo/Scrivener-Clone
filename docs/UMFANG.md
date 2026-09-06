@@ -1,9 +1,11 @@
-# Funktionsabdeckung – Alpha 2 (0.1.0-alpha.2)
+# Funktionsabdeckung – Alpha 3 (0.1.0-alpha.3)
 
-Stand: 5. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
+Stand: 6. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
 
 | Bereich | Implementiert | Grenze |
 |---|---|---|
+| Updates | Öffentliche GitHub Releases ohne Anmeldung, abschaltbare Startprüfung, Versionsvergleich einschließlich Alpha/Beta, Download mit SHA-256, Installerstart nach Speichern/Sichern | Kein stiller Installerstart; portable Programmdateien werden manuell ausgetauscht. Windows kann unsignierte Pakete blockieren |
+| Startseite | Die letzten drei erfolgreich geöffneten Projekte mit direktem Zugriff, lokal gespeicherter Reihenfolge und Pfadanzeige | Verschobene Dateien müssen über Projekt öffnen neu ausgewählt werden |
 | Projekte | SQLite-Einzeldatei, lokale Anhänge, Neu/Öffnen/Kopie, automatische und manuelle Sicherung, Wiederherstellung in neue Datei | Keine Cloud-Synchronisation, keine Verschlüsselung, kein `.scriv`-Import |
 | Struktur | Kapitel und Texte, Verschieben, Reihenfolge, Duplikat, atomisches Teilen/Zusammenführen, Papierkorb | Zusammenführen verlangt einen zweiten Abschnitt ohne lebende Unterabschnitte; Duplikat kopiert einen Abschnitt |
 | Ansichten | Text, mehrere Abschnitte zusammen, geordnete/freie Pinnwand, tabellarische Gliederung, zusätzliche Leseansicht, Fokus, hell/dunkel | Zweite Ansicht ist schreibgeschützt; Gliederung öffnet zum Bearbeiten den Abschnitt; Texteditor hat keine tatsächlichen Druckseiten |
@@ -35,7 +37,7 @@ Stand: 5. September 2026. Diese Datei beschreibt implementiertes Verhalten und s
 
 Markdown- und LaTeX-Bilder liegen nach Export in einem mit ausgegebenen `Schreibatelier-assets-…`-Nachbarordner. Dieser gehört zur Ausgabe. Ein Import verändert die Originaldatei nicht und weist auf verworfene Elemente hin. Layout, individuelle Office-Vorlagen, spezielle Tabellenformatierung, Änderungen/Kommentare fremder Office-Dateien und beliebige nicht unterstützte Dokumentelemente können abweichen oder entfallen.
 
-Nicht enthalten: Legacy `.doc`, FDX, direkte Scrivener-Dateiformate, mobile Apps, Synchronisationsdienst, Authenticode-Signatur und automatischer Updater. Das gebaute Paket ist eine lokale Windows-x64-Version; ein Laufzeittest auf einem zweiten Rechner ist noch nicht erfolgt.
+Nicht enthalten: Legacy `.doc`, FDX, direkte Scrivener-Dateiformate, mobile Apps, Synchronisationsdienst, Authenticode-Signatur und unbeaufsichtigte Update-Installation. Das gebaute Paket ist eine lokale Windows-x64-Version; ein Laufzeittest auf einem zweiten Rechner ist noch nicht erfolgt.
 
 ## Größen und Datenverhalten
 

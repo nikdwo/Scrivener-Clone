@@ -1,6 +1,16 @@
-# Validierung – Alpha 2 (0.1.0-alpha.2)
+# Validierung – Alpha 3 (0.1.0-alpha.3)
 
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Alpha-3-Prüfungen, 6. September 2026
+
+Alpha 3 ergänzt die Öffnungshistorie und den GitHub-Updater. Die gezielten Prüfungen decken Versionsvergleich, Paketwahl, SHA-256, Abbruch, erneuten Download und den Schutz ungespeicherter Texte vor dem Installerstart ab. Der Release-Build einschließlich TypeScript und Lizenzinventar (71 Komponenten) sowie die vier JavaScript-Logiktests bestanden. Die aktuellen Laufprotokolle liegen unter `artifacts/alpha3-*-checks.log`; der genaue Veröffentlichungsstand steht in `RELEASE-ALPHA-3.md`.
+
+Das portable Alpha-3-Paket bestand den nativen Start, Schreiben und Lesen über die echte Editor-Bridge in SQLite, Fußnoten, lokale Sprachprüfung mit Korrektur/Undo und den erneuten Start nach Ordnerumzug mit erhaltenen Einstellungen und Sicherungen.
+
+Alle 17 Edge-Oberflächentests bestanden im abschließenden vollständigen Lauf. Der Test für das gezielte Senden einer Markierung setzt seine Auswahl über die Browser-Range-API und prüft sie vor dem Öffnen der Prüfansicht; die Tastatursimulation hatte im Gesamtlauf wechselnde Auswahllängen erzeugt. Exakter Textumfang, Anbieterauswahl und Sprache werden unverändert geprüft.
+
+Windows Code Integrity blockierte den Alpha-3-Installer beim Start. Außerdem wurde `Schreibatelier.Core.dll` im separaten Debug-Testprogramm blockiert, bevor dessen Speicher-/Konverterprüfungen liefen; die nachgeschalteten Konsolenprüfungen wurden dadurch nicht ausgeführt. Der erfolgreiche native Test des portablen Release-Pakets ist davon getrennt zu betrachten. Installation und Deinstallation der Alpha 3 sind auf diesem Rechner daher nicht bestätigt. Die Sicherheitsrichtlinien wurden nicht geändert.
 
 ## Alpha-2-Prüfungen, 6. September 2026
 

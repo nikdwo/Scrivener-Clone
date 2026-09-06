@@ -228,7 +228,8 @@ test('proofreading discards stale results and project dictionary suppresses only
 
 test('proofreading sends selected text only on request, uses language and discovered KI model',async({page})=>{
   await page.locator('[data-doc="scene"]').click();const editor=page.locator('.editor-sheet .tiptap');await editor.click();await page.keyboard.press('Control+a');await page.keyboard.type('Mara sieht einen Feler');
-  await page.keyboard.press('Control+End');for(let i=0;i<5;i++)await page.keyboard.press('Shift+ArrowLeft');
+  await editor.evaluate(element=>{const text=element.querySelector('p')!.firstChild!;const range=document.createRange();range.setStart(text,text.textContent!.lastIndexOf('Feler'));range.setEnd(text,text.textContent!.length);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range)});
+  await expect.poll(()=>page.evaluate(()=>window.getSelection()?.toString())).toBe('Feler');
   await page.locator('[data-action="proof"]').click();await expect(page.locator('#proofRun')).toHaveText('Markierung prüfen');
   await page.locator('#proofEngine').selectOption('codex');await expect(page.locator('#proofModel')).toHaveValue('test-model');
   expect(await page.evaluate(()=>(window as any).__test.proofCalls.length)).toBe(0);
@@ -242,6 +243,7 @@ test('proofreading sends selected text only on request, uses language and discov
   await expect(page.locator('#proofAccount')).toContainText('Premium-Zugang gespeichert');await expect(page.locator('#ltKey')).toHaveValue('');
   await page.locator('[data-proof-action="premiumDisconnect"]').click();await expect(page.locator('#proofAccount')).toContainText('Noch kein Premium-Konto');
 });
+
 
 test('account dialog can be cancelled with empty or invalid required fields',async({page})=>{
   await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await page.locator('#proofEngine').selectOption('premium');

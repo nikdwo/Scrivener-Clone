@@ -40,8 +40,9 @@ try {
     $mirror = $null
     try { $mirror = Invoke-RestMethod "$target/releases/tags/$tag" -Headers $headers } catch { if ([int]$_.Exception.Response.StatusCode -ne 404) { throw } }
     if (!$mirror) {
-        $notes = "Windows-Downloads für Schreibatelier $Version. Installer und portables ZIP sind bytegleich mit den bereits geprüften Originalpaketen. Lizenztexte und Anleitung liegen in den Paketen. SHA256SUMS.txt enthält die Prüfsummen. Diese Pakete sind nicht digital signiert und benötigen Microsoft Edge WebView2 Runtime."
-        if ($release.prerelease) { $notes = "Vorabversion zum Testen. Wichtige Manuskripte zusätzlich sichern.`n`n" + $notes }
+        $notes = [string]$release.body
+        if ([string]::IsNullOrWhiteSpace($notes)) { throw 'Versionshinweise für das öffentliche Release fehlen.' }
+        $notes += "`n`nInstaller und portables ZIP sind bytegleich mit den Originalpaketen. Die Dateiintegrität wird vor und nach dem Upload per SHA-256 geprüft; der Quellcode bleibt privat."
         $mirror = Write-GitHubJson "$target/releases" Post @{tag_name=$tag; target_commitish=$repo.default_branch; name="Schreibatelier $Version"; body=$notes; draft=$true; prerelease=[bool]$release.prerelease}
     }
     foreach ($name in $names) {

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><AssemblyName>Schreibatelier</AssemblyName>
-    <Version>0.1.0-alpha.2</Version><Product>Schreibatelier Alpha 2</Product><ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.1.0-alpha.3</Version><Product>Schreibatelier Alpha 3</Product><ApplicationManifest>app.manifest</ApplicationManifest>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier><RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion><SelfContained>true</SelfContained>
   </PropertyGroup>
