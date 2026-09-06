@@ -99,6 +99,7 @@ public sealed class ProjectStore : IDisposable
         using var db = Connect();
         string id, title; JsonObject settings;
         using (var cmd = Command(db, "SELECT id,title,settings FROM project")) using (var r = cmd.ExecuteReader()) { r.Read(); id = r.GetString(0); title = r.GetString(1); settings = Obj(r.GetString(2)); }
+        TimelineData.ValidateSettings(settings);
         using var docs = Command(db, "SELECT id,parent_id,position,title,kind,'' AS body,meta,revision,deleted,words,modified FROM documents ORDER BY position,title"); using var rows = docs.ExecuteReader();
         var list = new List<DocumentInfo>(); while (rows.Read()) list.Add(Read(rows, false));
         var byId = list.ToDictionary(d => d.Id); var validated = new HashSet<string>();
@@ -107,6 +108,7 @@ public sealed class ProjectStore : IDisposable
         foreach (var d in list)
         {
             Model.ValidateMeta(d.Meta, d.Kind);
+            TimelineData.ValidateBasis(d.Meta, settings);
             var chain = new HashSet<string>(); var current = d;
             while (!validated.Contains(current.Id))
             {
@@ -121,6 +123,7 @@ public sealed class ProjectStore : IDisposable
     private static void Insert(SqliteConnection db, DocumentInfo d)
     {
         Model.ValidateMeta(d.Meta, d.Kind);
+        TimelineData.ValidateBasis(d.Meta, Obj((string)Scalar(db, "SELECT settings FROM project")!));
         var body = d.Body ?? Model.EmptyBody; Model.ValidateBody(body); var plain = Model.PlainText(body);
         Execute(db, "INSERT INTO documents(" + Columns + ",plain) VALUES($id,$parent,$pos,$title,$kind,$body,$meta,0,0,$words,$modified,$plain)", ("$id", d.Id), ("$parent", d.ParentId), ("$pos", d.Position), ("$title", d.Title), ("$kind", d.Kind), ("$body", body), ("$meta", d.Meta.ToJsonString()), ("$words", Model.WordCount(plain)), ("$modified", d.Modified), ("$plain", plain));
     }
@@ -145,6 +148,7 @@ public sealed class ProjectStore : IDisposable
             if (old.Deleted) throw new InvalidDataException("Dieser Abschnitt liegt im Papierkorb.");
             if (string.IsNullOrWhiteSpace(d.Title) || d.Title.Length > 500 || d.Meta.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Titel oder Metadaten sind ungültig.");
             Model.ValidateMeta(d.Meta, old.Kind);
+            TimelineData.ValidateBasis(d.Meta, Obj((string)Scalar(db, "SELECT settings FROM project")!));
             var body = d.Body ?? old.Body!; Model.ValidateBody(body); var plain = Model.PlainText(body); var words = Model.WordCount(plain);
             if (snapshotBefore) InsertSnapshot(db, old, "Vor Suchen und Ersetzen");
             Execute(db, "UPDATE documents SET title=$title,body=$body,meta=$meta,words=$words,plain=$plain,revision=revision+1,modified=$now WHERE id=$id", ("$id", d.Id), ("$title", d.Title), ("$body", body), ("$meta", d.Meta.ToJsonString()), ("$words", words), ("$plain", plain), ("$now", DateTimeOffset.UtcNow.ToString("O")));
@@ -183,7 +187,25 @@ public sealed class ProjectStore : IDisposable
             if (settings["styleAnalysis"] is not JsonObject style || style.Any(pair => pair.Key is not ("repetitions" or "sentences" or "wording" or "automatic") || pair.Value is not JsonValue value || !value.TryGetValue<bool>(out _)))
                 throw new InvalidDataException("Ungültige Einstellungen für die Stilanalyse.");
         }
-        using var db = Connect(); Execute(db, "UPDATE project SET title=$title,settings=$settings", ("$title", title), ("$settings", settings.ToJsonString()));
+        TimelineData.ValidateSettings(settings);
+        using var db = Connect(); using var tx = db.BeginTransaction();
+        var previous = Obj((string)Scalar(db, "SELECT settings FROM project")!);
+        if (previous["timeline"] is JsonObject oldTimeline && oldTimeline["basis"]!.GetValue<string>() != settings["timeline"]?["basis"]?.GetValue<string>())
+            throw new InvalidDataException("Die einmal gewählte Zeitbasis dieses Projekts bleibt fest.");
+        var remaining = (settings["timeline"]?["strands"] as JsonArray ?? new()).Select(n => n!["id"]!.GetValue<string>()).ToHashSet();
+        var removed = (previous["timeline"]?["strands"] as JsonArray ?? new()).Select(n => n!["id"]!.GetValue<string>()).Where(id => !remaining.Contains(id)).ToHashSet();
+        using (var cmd = Command(db, "SELECT meta FROM documents")) using (var reader = cmd.ExecuteReader())
+            while (reader.Read())
+            {
+                var meta = Obj(reader.GetString(0)); TimelineData.ValidateBasis(meta, settings);
+                if (meta["timeline"]?["strandId"] is JsonValue value && removed.Contains(value.GetValue<string>()))
+                    throw new InvalidDataException("Dieser Handlungsstrang ist noch zugeordnet, möglicherweise im Papierkorb.");
+            }
+        if (settings["templates"] is JsonArray templates)
+            foreach (var template in templates)
+                if (template?["meta"] is JsonObject meta && meta.ContainsKey("timeline"))
+                { Model.ValidateMeta(meta, template!["kind"]!.GetValue<string>()); TimelineData.ValidateBasis(meta, settings); }
+        Execute(db, "UPDATE project SET title=$title,settings=$settings", ("$title", title), ("$settings", settings.ToJsonString())); tx.Commit();
     }
     public DocumentInfo Split(string id, long revision, string firstBody, string secondBody, string title)
     {
@@ -196,6 +218,7 @@ public sealed class ProjectStore : IDisposable
         Execute(db, "UPDATE documents SET position=position+1,revision=revision+1 WHERE parent_id=$parent AND position>$pos", ("$parent", parent), ("$pos", original.Position));
         var second = new DocumentInfo { ParentId = parent, Position = original.Position + 1, Title = title, Kind = original.Kind == "script" ? "script" : "text", Body = secondBody };
         if (original.Meta["storyCardIds"] is JsonArray cardIds) second.Meta["storyCardIds"] = cardIds.DeepClone();
+        if (original.Meta["timeline"] is JsonObject timeline) second.Meta["timeline"] = timeline.DeepClone();
         Insert(db, second); UpdateBody(db, id, firstBody); tx.Commit(); return GetDocument(second.Id);
     }
     private static void UpdateBody(SqliteConnection db, string id, string body)

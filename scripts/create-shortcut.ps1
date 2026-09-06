@@ -10,7 +10,7 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $application
 $shortcut.WorkingDirectory = Split-Path -Parent $application
 $shortcut.IconLocation = "$application,0"
-$shortcut.Description = 'Schreibatelier öffnen'
+$shortcut.Description = if ($application.Contains('Schreibatelier-testing-timeline')) { 'Schreibatelier – Testversion Zeitstrahl' } else { 'Schreibatelier öffnen' }
 $shortcut.Save()
 $saved = $shell.CreateShortcut($shortcutPath)
 if ($saved.TargetPath -ne $application -or !(Test-Path -LiteralPath $saved.TargetPath -PathType Leaf)) { throw 'Die Startverknüpfung konnte nicht geprüft werden.' }

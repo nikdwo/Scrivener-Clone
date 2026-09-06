@@ -13,6 +13,7 @@ import { EditorState } from '@tiptap/pm/state';
 import { Proofreading } from './proofreading';
 import { Updates } from './updates';
 import { StoryCards } from './storycards';
+import { Timeline } from './timeline';
 import { isStoryCard } from './storycards.mjs';
 import { escapeHtml as h, orderedDocuments, plainText, wordCount, matchesCollection } from './logic.mjs';
 
@@ -43,6 +44,9 @@ const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,s
 const updates=new Updates(rpc,flush,async enabled=>{const previous=preferences.checkUpdatesAtStartup;preferences.checkUpdatesAtStartup=enabled;try{await rpc('preferences',preferences)}catch(e){preferences.checkUpdatesAtStartup=previous;throw e}});
 const storyCards=new StoryCards({rpc,project:()=>project,scene:current,editor:()=>active,getDoc,changed,flush,refresh,modal,select,trash:trashDocument,saveSettings:saveProjectSettings,
   show:()=>{inspector='cards';document.body.classList.add('inspector-visible');renderInspector()},error:message=>toast(message,true)});
+const timeline=new Timeline({project:()=>project,current,selected:()=>selected,visible:()=>view==='timeline',changed,flush,saveSettings:saveProjectSettings,modal,
+  select:async id=>{await flush();inspector='details';document.body.classList.add('inspector-visible');await select(id);document.querySelector('.timeline-details')?.scrollIntoView({block:'start'})},
+  openText:async id=>{await flush();view='write';await select(id)},inspector:renderInspector,error:message=>toast(message,true)});
 
 function toast(text: string, error = false) { $('toast').textContent=text; $('toast').classList.remove('hidden'); $('toast').classList.toggle('error',error); if (!error) setTimeout(()=>{$('toast').classList.add('hidden')},5000); }
 function state(text: string, error = false) { $('saveState').textContent=text; $('saveState').classList.toggle('error',error); }
@@ -100,9 +104,11 @@ function changed(d:any) {
   if(project.readOnly) return;
   d.words=wordCount(plainText(d.body ?? emptyBody)); setDocument(d); dirty.set(d.id,++serial);
   if(isStoryCard(d)){storyCards.invalidate();proofreading.cardsChanged()}
+  timeline.update();
   state('Ungespeicherte Änderungen'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>flush().catch(()=>{}),1000); updateStats();
 }
 async function flush():Promise<void> {
+  timeline.assertValid();
   clearTimeout(saveTimer);
   if(saving) { await saving; if(dirty.size) return flush(); return; }
   if(!dirty.size) return;
@@ -119,12 +125,12 @@ async function flush():Promise<void> {
 }
 setInterval(()=>{ if(dirty.size) void flush().catch(()=>{}); },5000);
 async function getDoc(id:string) { if(!cache.has(id)) { const owner=project; const d=await rpc('document',{id});if(owner!==project)throw new Error('Das Projekt hat sich während des Ladens geändert.');cache.set(id,d); } return cache.get(id); }
-async function refresh(next?:any) { await flush(); project=next ?? await rpc('state'); for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); storyCards.invalidate(); proofreading.cardsChanged(); }
+async function refresh(next?:any) { await flush(); project=next ?? await rpc('state'); for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); storyCards.invalidate(); proofreading.cardsChanged(); timeline.update(); }
 function renderRecentProjects(entries:{title:string,filePath:string}[]=[]) {
   $('recentProjects').innerHTML=entries.slice(0,3).map(p=>`<li><button type="button" data-recent-project="${h(p.filePath)}" title="${h(p.filePath)}"><span>${h(p.title||p.filePath.split(/[\\/]/).pop())}</span><small>${h(p.filePath)}</small></button></li>`).join('');
   $('recentProjectsEmpty').classList.toggle('hidden',entries.length>0);
 }
-async function adopt(next:any) { if(!next) return; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); project=next; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
+async function adopt(next:any) { if(!next) return; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); if(view==='timeline')view='write'; project=next; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
 
 function renderTree() {
   if(!project) return;
@@ -175,10 +181,13 @@ async function select(id:string) {
 function displayDocs() { if(collection) return project.documents.filter((d:any)=>!d.deleted&&matchesCollection(d,collection)); return orderedDocuments(project.documents.filter((d:any)=>!isStoryCard(d)),selected,false); }
 async function renderView() {
   const request=++renderRequest;
+  timeline.remember();
   destroyEditors(); const pane=$('editorPane'); pane.innerHTML='';
   document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',(el as HTMLElement).dataset.view===view)); $('formatbar').classList.toggle('hidden',view!=='write');
+  $<HTMLInputElement>('combined').disabled=view==='timeline';
   const d=await getDoc(selected);
   if(request!==renderRequest)return;
+  if(view==='timeline') { timeline.render(false); return; }
   if(d.deleted) { pane.innerHTML=`<div class="empty-state"><h2>Im Papierkorb</h2><p>Dieser Abschnitt bleibt gespeichert und kann wiederhergestellt werden.</p><button data-action="restoreDocument">Wiederherstellen</button></div>`; return; }
   if(collection || view==='board') { renderBoard(); return; }
   if(view==='outline') { renderOutline(); return; }
@@ -230,6 +239,7 @@ function renderInspector() {
   if(inspector==='details') {
     target.innerHTML=area('Zusammenfassung','metaSynopsis',d.meta.synopsis)+`<div class="field-row"><div class="field"><label for="metaStatus">Status</label><select id="metaStatus">${['Idee','Entwurf','Überarbeitung','Fertig'].map(x=>`<option ${x===(d.meta.status||'Entwurf')?'selected':''}>${x}</option>`).join('')}</select></div>${field('Farbe','metaColor',d.meta.color||'#b77d4e','color')}</div>`+field('Schlagwörter','metaTags',d.meta.tags)+field('Wortziel','metaTarget',d.meta.target||'','number')+`<div class="field"><label>Eigene Metadaten</label><div id="customMeta">${Object.entries(d.meta.custom??{}).map(([k,v])=>`<div class="muted"><b>${h(k)}:</b> ${h(v)}</div>`).join('')}</div><button data-action="customMeta">Feld bearbeiten</button></div><div class="meta-stats"><div><small>Wörter</small><strong>${d.words}</strong></div><div><small>Zeichen</small><strong>${[...plainText(d.body??emptyBody)].length}</strong></div></div>`;
     for(const [id,key] of [['metaSynopsis','synopsis'],['metaStatus','status'],['metaColor','color'],['metaTags','tags'],['metaTarget','target']]) { const el=$(id) as HTMLInputElement;el.disabled=project.readOnly;el.addEventListener('input',()=>{d.meta[key]=key==='target'?Math.max(0,Number(el.value)):el.value;changed(d)}) }
+    timeline.inspector(target,d);
   } else if(inspector==='notes') {
     target.innerHTML=area('Notizen zu diesem Abschnitt','metaNotes',d.meta.notes)+`<div class="field"><label>Kommentare & Fußnoten</label><div class="comment-list" id="commentList"></div></div>`;
     $<HTMLTextAreaElement>('metaNotes').disabled=project.readOnly;$('metaNotes').addEventListener('input',()=>{d.meta.notes=$<HTMLTextAreaElement>('metaNotes').value;changed(d)});
@@ -268,7 +278,7 @@ async function trashDocument(id:string,owner=project?.id) {
     let parent=d.parentId;while(info(parent)?.deleted||isStoryCard(info(parent)))parent=info(parent).parentId??'manuscript';
     await select(parent);
   }else if(view==='trash')await actions.showTrash();
-  else if(view==='board'||view==='outline'||collection||(combined&&affected.some((d:any)=>!isStoryCard(d))))await renderView();
+  else if(view==='board'||view==='outline'||view==='timeline'||collection||(combined&&affected.some((d:any)=>!isStoryCard(d))))await renderView();
   renderInspector();toast(`„${d.title}“ wurde in den Papierkorb verschoben.`);
 }
 async function restoreDocument(id:string) {
@@ -279,10 +289,10 @@ async function restoreDocument(id:string) {
 async function saveProjectSettings() {
   const owner=project.id,title=project.title,settings=JSON.parse(JSON.stringify(project.settings));await flush();
   if(project?.id!==owner)throw new Error('Das Projekt wurde gewechselt. Die Einstellungen wurden nicht übernommen.');
-  const next=await rpc('settings',{projectId:owner,title,settings});if(project?.id===owner)await refresh(next);
+  await rpc('settings',{projectId:owner,title,settings});if(project?.id===owner)await refresh();
 }
 function updateFormatButtons() {document.querySelectorAll<HTMLElement>('[data-format]').forEach(b=>b.classList.toggle('active',!!active?.isActive(b.dataset.format!)))}
-async function setView(next:string) {await flush();view=next;await renderView()}
+async function setView(next:string) {await flush();view=next;if(next==='timeline')collection=null;await renderView()}
 
 function findHits(doc:any,query:string) {
   const hits:{from:number,to:number}[]=[];
@@ -320,7 +330,7 @@ const actions:Record<string,()=>any>={
   saveCopy:async()=>{await flush();const path=await rpc('saveCopy');if(path)toast('Projektkopie gespeichert: '+path)},
   restoreBackup:async()=>{await flush();await adopt(await rpc('restoreBackup'))},backup:async()=>{await flush();toast('Sicherung erstellt: '+await rpc('backup'))},
   close:async()=>{await flush();await rpc('close')},newDocument:()=>addDocument(),newFolder:()=>addDocument('folder'),
-  write:()=>setView('write'),board:()=>setView('board'),outline:()=>setView('outline'),
+  write:()=>setView('write'),board:()=>setView('board'),outline:()=>setView('outline'),timeline:()=>setView('timeline'),
   theme:async()=>{document.body.classList.toggle('dark');preferences.theme=document.body.classList.contains('dark')?'dark':'light';await rpc('preferences',preferences)},
   focus:()=>{document.body.classList.toggle('focus-mode');$('exitFocus').classList.toggle('hidden',!document.body.classList.contains('focus-mode'))},
   splitView:async()=>{referenceId=referenceId?null:selected;await renderReference()},
@@ -347,7 +357,7 @@ const actions:Record<string,()=>any>={
   moveDialog:async()=>{await requireWrite();const d=current();const form=await modal('Abschnitt verschieben',`<div class="field"><label for="parent">Ziel</label><select name="parent" id="parent">${project.documents.filter((x:any)=>!x.deleted&&x.kind!=='asset'&&x.id!==selected).map((x:any)=>`<option value="${x.id}" ${x.id===d.parentId?'selected':''}>${h(x.title)}</option>`).join('')}</select></div>${field('Position (1 = Anfang)','position',d.position+1,'number')}`);if(form)await moveDocument(selected,String(form.get('parent')),Number(form.get('position'))-1)},
   trashDocument:()=>trashDocument(selected),
   splitDocument:async()=>{await requireWrite();if(!active) return;const d=current(),ed=active,pos=ed.state.selection.from;const title=await textPrompt('Abschnitt teilen','Titel des neuen Abschnitts',d.title+' – Fortsetzung');if(!title)return;const tail=ed.state.doc.cut(pos).toJSON();const head=ed.state.doc.cut(0,pos).toJSON();if(!tail.content?.length)throw new Error('Am Dokumentende gibt es keinen weiteren Text.');await refresh(await rpc('split',{id:d.id,revision:d.revision,firstBody:JSON.stringify(head),secondBody:JSON.stringify(tail),title}));await select(selected)},
-  mergeDocument:async()=>{await requireWrite();const d=current();const siblings=project.documents.filter((x:any)=>!x.deleted&&x.parentId===d.parentId&&x.kind!=='asset').sort((a:any,b:any)=>a.position-b.position);const next=siblings[siblings.findIndex((x:any)=>x.id===selected)+1];if(!next)throw new Error('Kein folgender Textabschnitt vorhanden.');if(!await modal('Abschnitte zusammenführen',`<p>„${h(next.title)}“ wird an „${h(d.title)}“ angehängt und anschließend in den Papierkorb verschoben. Beide Textstände bleiben erhalten.</p>`,'Zusammenführen'))return;const n=await getDoc(next.id);await refresh(await rpc('merge',{firstId:d.id,secondId:n.id,firstRevision:d.revision,secondRevision:n.revision}));await select(selected)},
+  mergeDocument:async()=>{await requireWrite();const d=current();const siblings=project.documents.filter((x:any)=>!x.deleted&&x.parentId===d.parentId&&x.kind!=='asset').sort((a:any,b:any)=>a.position-b.position);const next=siblings[siblings.findIndex((x:any)=>x.id===selected)+1];if(!next)throw new Error('Kein folgender Textabschnitt vorhanden.');if(!await modal('Abschnitte zusammenführen',`<p>„${h(next.title)}“ wird an „${h(d.title)}“ angehängt und anschließend in den Papierkorb verschoben. Beide Textstände bleiben erhalten.</p><p>Zeitangaben und Handlungsstrang des ersten Abschnitts bleiben unverändert. Die Angaben des zweiten Abschnitts bleiben im Papierkorb und in den Textständen erhalten.</p>`,'Zusammenführen'))return;const n=await getDoc(next.id);await refresh(await rpc('merge',{firstId:d.id,secondId:n.id,firstRevision:d.revision,secondRevision:n.revision}));await select(selected)},
   addToCollection:async()=>{await requireWrite();const list=(project.settings.collections??[]).filter((c:any)=>c.ids);if(!list.length)throw new Error('Bitte zuerst eine manuelle Sammlung anlegen.');const form=await modal('Zur Sammlung hinzufügen',`<div class="field"><label for="collection">Sammlung</label><select name="collection" id="collection">${list.map((c:any,i:number)=>`<option value="${i}">${h(c.title)}</option>`).join('')}</select></div>`);if(form){const c=list[Number(form.get('collection'))];c.ids=[...new Set([...c.ids,selected])];await saveProjectSettings()}},
   find:async()=>{if(!active)return;await flush();const ed=active;const form=await modal('Suchen und Ersetzen',field('Suchen (Groß-/Kleinschreibung beachten)','find')+field('Ersetzen durch','replace')+`<div class="field"><label for="replaceScope">Aktion</label><select name="scope" id="replaceScope"><option value="find">Nächsten Treffer markieren</option><option value="section">Alle Treffer im Abschnitt ersetzen</option><option value="project">Alle Treffer im Projekt ersetzen</option></select></div><p class="muted">Suche im Haupttext, auch über Formatierungswechsel hinweg. Projektweite Ersetzungen sichern zuvor Textstände. Absatzgrenzen und Anmerkungen werden nicht durchsucht.</p>`,'Weiter');if(!form)return;const query=String(form.get('find'));if(!query)return;const replacement=String(form.get('replace')),scope=String(form.get('scope'));
     if(scope==='find'){const hits=findHits(ed.state.doc,query);const hit=hits.find(x=>x.from>=ed.state.selection.to)??hits[0];if(hit)ed.chain().focus().setTextSelection(hit).scrollIntoView().run();else toast('Keine Treffer.');return}
@@ -370,7 +380,7 @@ async function perform(action:string) {try{await actions[action]?.()}catch(e:any
 const documentContextMenu=$('documentContextMenu'),contextTrash=$<HTMLButtonElement>('contextTrash');
 let contextDocument='',contextProject='',contextOrigin:HTMLElement|null=null;
 function openDocumentContext(event:MouseEvent|KeyboardEvent) {
-  const row=(event.target as HTMLElement).closest<HTMLElement>('#tree [data-doc],[data-card],[data-outline],[data-story-action="open"]');
+  const row=(event.target as HTMLElement).closest<HTMLElement>('#tree [data-doc],[data-card],[data-outline],[data-timeline-scene],[data-story-action="open"]');
   if(!row)return;
   const id=row.dataset.doc??row.dataset.card??row.dataset.outline??row.dataset.id!,d=info(id);
   if(!d||d.deleted)return;
@@ -512,6 +522,33 @@ async function integrationStyleCheck(checks:string[]) {
   await proofreading.run();if(document.querySelectorAll('.proof-finding').length!==1||!document.querySelector('[data-rule="wording"]'))throw new Error('Gespeicherte Kategorien nicht angewendet.');
   checks.push('Lokale Stilanalyse → drei Kategorien → Navigation → unveränderter Text → SQLite-Einstellungen → Wiederöffnen');
 }
+async function integrationTimelineCheck(checks:string[]) {
+  let scenes=project.documents.filter((d:any)=>Number.isInteger(d.meta.nativeTimelineCheck)).sort((a:any,b:any)=>a.meta.nativeTimelineCheck-b.meta.nativeTimelineCheck);
+  if(scenes.length){
+    if(scenes.length!==3||project.settings.timeline?.basis!=='relative'||scenes[0].meta.timeline.end.time!=='13:00'||project.settings.timeline.strands.length!==2)throw new Error('Zeitstrahl aus vorherigem Programmstart unvollständig.');
+    checks.push('Zeitstrahl aus vorherigem Programmstart geladen');
+  }else{
+    const a=crypto.randomUUID().replaceAll('-',''),b=crypto.randomUUID().replaceAll('-','');
+    project.settings.timeline={basis:'relative',strands:[{id:a,name:'Heimkehr'},{id:b,name:'Die Suche'}]};await saveProjectSettings();
+    const figure=await rpc('create',{parent:'research',title:'Mara – Zeitstrahlprüfung',kind:'text',meta:{storyCard:{type:'figure',aliases:[],fields:{}}}});
+    const entries=[{start:{day:1,time:'09:00'},end:{day:1,time:'12:00'},strandId:a},{start:{day:1,time:'10:00'},end:{day:1,time:'14:00'},strandId:b},{start:{day:2},strandId:a}];
+    for(let i=0;i<3;i++)scenes.push(await rpc('create',{parent:'manuscript',title:['Mara kehrt zurück','Die Suche beginnt','Der folgende Tag'][i],kind:i===2?'script':'text',body:JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Dieser Szenentext bleibt unverändert.'}]}]}),meta:{timeline:entries[i],nativeTimelineCheck:i,...(i<2&&figure?{storyCardIds:[figure.id]}:{})}}));
+    await refresh();
+  }
+  await select(scenes[0].id);inspector='details';renderInspector();await setView('timeline');
+  if(document.querySelectorAll('.timeline-lane').length!==3||!document.querySelector(`[data-timeline-scene="${scenes[0].id}"]`))throw new Error('Zeitstrahlbahnen fehlen.');
+  const before=(await rpc('document',{id:scenes[0].id})).body,order=project.documents.map((d:any)=>[d.id,d.parentId,d.position]);
+  $<HTMLInputElement>('timelineEndTime').value='13:00';$('timelineEndTime').dispatchEvent(new Event('input',{bubbles:true}));await flush();
+  const saved=await rpc('document',{id:scenes[0].id});if(saved.meta.timeline.end.time!=='13:00'||saved.body!==before)throw new Error('Zeitbearbeitung verändert Text oder wird nicht gespeichert.');
+  const filter=$<HTMLSelectElement>('timelineFilter-figure');filter.value=scenes[0].meta.storyCardIds[0];filter.dispatchEvent(new Event('change'));
+  if(document.querySelectorAll('[data-timeline-scene]').length!==2)throw new Error('Figurenfilter im Zeitstrahl fehlerhaft.');
+  document.querySelector('.timeline-details')?.scrollIntoView({block:'start'});
+  await rpc('integrationCapture',{phase:'timeline'});
+  const filePath=project.filePath;await adopt(await rpc('openRecent',{path:filePath}));await select(scenes[0].id);inspector='details';renderInspector();await setView('timeline');
+  if($<HTMLInputElement>('timelineEndTime').value!=='13:00'||$<HTMLSelectElement>('timelineFilter-figure').value)throw new Error('Zeitstrahl wurde nicht korrekt wieder geöffnet.');
+  if(JSON.stringify(project.documents.map((d:any)=>[d.id,d.parentId,d.position]))!==JSON.stringify(order))throw new Error('Zeitstrahl verändert Manuskriptstruktur.');
+  checks.push('Zeitstrahl → drei Szenen → zwei Handlungen → Figurenfilter → Zeitbearbeitung → SQLite → Wiederöffnen ohne Text- oder Strukturänderung');
+}
 async function integrationCheck() {
   const checks:string[]=[];
   try {const reopened=await rpc('openRecent',{path:project.filePath});if(reopened.id!==project.id)throw new Error('Zuletzt geöffnet: falsches Projekt');checks.push('Zuletzt geöffnet → Projektzugriff');const d=await rpc('create',{parent:'manuscript',title:'Native Editorprüfung',kind:'text'});await refresh();setDocument(d);await select(d.id);active!.commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Grüße aus dem Windows-Editor.',marks:[{type:'bold'}]},{type:'footnote',attrs:{id:'native-note',text:'Eine echte Fußnote.'}}]}]});await flush();const saved=await rpc('document',{id:d.id});if(!saved.body.includes('Windows-Editor'))throw new Error('Speichern fehlgeschlagen');checks.push('Editor → Bridge → SQLite');if(!saved.body.includes('footnote'))throw new Error('Fußnote fehlt');checks.push('Fußnote und Formatierung');await rpc('integrationCapture',{phase:'editor'});
@@ -528,6 +565,6 @@ async function integrationCheck() {
       if(!document.querySelector<HTMLElement>(selector)?.getClientRects().length)throw new Error('Kontoanmeldung nicht sichtbar: '+$('proofAccount').textContent);
       await rpc('integrationCapture',{phase});checks.push(engine+'-Anmeldeknopf im Windows-Programm sichtbar');
     }
-    for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await integrationCardCheck(checks);await integrationStyleCheck(checks);await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
+    for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await integrationCardCheck(checks);await integrationStyleCheck(checks);await integrationTimelineCheck(checks);await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
 }
 void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.updateInfo){updates.configure(result.updateInfo,preferences.checkUpdatesAtStartup!==false);if(!result.integrationTest&&preferences.checkUpdatesAtStartup!==false)void updates.check(true)}if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});

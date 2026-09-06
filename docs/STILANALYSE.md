@@ -4,7 +4,7 @@ Diese Erweiterung liegt auf `testing`; sie ist noch nicht Bestandteil der veröf
 
 ## Starten und verwenden
 
-`scripts/build.ps1 -Testing` erzeugt die selbstständige Windows-Testversion unter `artifacts/Schreibatelier-testing-style/app/Schreibatelier.exe` und aktualisiert **Schreibatelier starten** im Projektordner. Die interne Versionskennung ist `0.1.0-alpha.4+testing.style`; das Fenster trägt den Zusatz **Testversion Stilanalyse**. Der Testbuild enthält weiterhin die lokale Sprachprüfung. Installer und GitHub-Release entstehen durch diesen Befehl nicht.
+`scripts/build.ps1 -Testing` erzeugt die selbstständige Windows-Testversion unter `artifacts/Schreibatelier-testing-timeline/app/Schreibatelier.exe` und aktualisiert **Schreibatelier starten** im Projektordner. Die interne Versionskennung ist `0.1.0-alpha.4+testing.timeline`; das Fenster trägt den Zusatz **Testversion Zeitstrahl** (einschließlich Stilanalyse). Der Testbuild enthält weiterhin die lokale Sprachprüfung. Installer und GitHub-Release entstehen durch diesen Befehl nicht.
 
 1. Einen Textabschnitt öffnen, rechts **Prüfen → Prüfverfahren → Stilanalyse · lokal** auswählen.
 2. **Abschnitt analysieren** anklicken. Eine zuvor bewusst markierte Passage wird über **Markierung analysieren** ausgewertet. Bei **Mit Unterabschnitten** zählt nur der aktive Editor.

@@ -63,6 +63,7 @@ public static partial class Model
     public static void ValidateMeta(JsonObject meta, string kind)
     {
         if (meta.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Die Metadaten überschreiten 2 MB.");
+        TimelineData.ValidateMeta(meta, kind);
         static bool Text(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out _);
         if (meta.ContainsKey("storyCard"))
         {

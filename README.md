@@ -47,7 +47,7 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 
 ## Benutzen
 
-**Auf `testing`:** Die neue [lokale deutsche Stilanalyse](docs/STILANALYSE.md) ergänzt Wiederholungs-, Satzlängen- und Formulierungshinweise. Mit `scripts/build.ps1 -Testing` entsteht eine startbare Testversion; **Schreibatelier starten** verweist anschließend auf diesen Testbuild. In der Anwendung **Prüfen → Prüfverfahren → Stilanalyse · lokal** wählen. Diese Erweiterung ist noch nicht in den Alpha-4-Downloads enthalten.
+**Auf `testing`:** Der [Szenen-Zeitstrahl](docs/ZEITSTRAHL.md) ergänzt Zeitangaben, Handlungsbahnen und Kartenfilter. Die neue [lokale deutsche Stilanalyse](docs/STILANALYSE.md) ergänzt Wiederholungs-, Satzlängen- und Formulierungshinweise. Mit `scripts/build.ps1 -Testing` entsteht eine startbare Testversion; **Schreibatelier starten** verweist anschließend auf diesen Testbuild mit dem Fensterzusatz **Testversion Zeitstrahl**. In der Anwendung **Prüfen → Prüfverfahren → Stilanalyse · lokal** wählen. Diese Erweiterung ist noch nicht in den Alpha-4-Downloads enthalten.
 
 **Neu in Alpha 4:** [Figuren-, Orts- und Gegenstandskarten mit automatischer Namenserkennung](docs/FIGUREN-UND-ORTE.md). Die Karten gehören zu den oben verlinkten Alpha-4-Paketen.
 

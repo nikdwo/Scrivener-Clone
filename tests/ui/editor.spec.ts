@@ -58,6 +58,87 @@ test.beforeEach(async({page})=>{
   await expect(page.locator('#workspace')).toBeVisible();
 });
 
+async function timelineFixture(page:any,count=3){
+  await page.evaluate(count=>{
+    const p=(window as any).__test.project,a='a'.repeat(32),b='b'.repeat(32),c='c'.repeat(32);
+    p.settings.timeline={basis:'relative',strands:[{id:a,name:'Haupthandlung'},{id:b,name:'Die Suche'}]};
+    const first=p.documents.find((d:any)=>d.id==='scene'),second=p.documents.find((d:any)=>d.id==='scene2');
+    first.meta.timeline={start:{day:2,time:'09:00'},end:{day:2,time:'12:00'},strandId:a};first.meta.storyCardIds=[c];
+    second.meta.timeline={start:{day:1},strandId:a};
+    p.documents.push({...structuredClone(first),id:'third',position:2,title:'Dritte Szene',kind:'script',meta:{timeline:{start:{day:2,time:'10:00'},end:{day:3},strandId:b},storyCardIds:[c]}});
+    p.documents.push({id:c,parentId:'research',position:0,kind:'text',title:'Mara',body:first.body,revision:0,meta:{storyCard:{type:'figure',aliases:[],fields:{}}},words:0});
+    for(let i=3;i<count;i++)p.documents.push({...structuredClone(first),id:'extra'+i,position:i,title:'Szene '+i,meta:{timeline:{start:{day:i*1000},strandId:i%2?a:b}}});
+    sessionStorage.setItem('testSavedProject',JSON.stringify(p));
+  },count);await page.reload();await page.locator('[data-view="timeline"]').click();
+}
+test('timeline setup, strand management, metadata and persistence use existing project settings',async({page})=>{
+  await page.locator('[data-view="timeline"]').click();await page.locator('#timelineView [data-timeline-action="setup"]').click();
+  await expect(page.locator('#timelineBasis')).toHaveValue('relative');await page.locator('#dialogSubmit').click();
+  await page.locator('[data-timeline-scene="scene"]').click();await expect(page.locator('[data-view="timeline"]')).toHaveClass('active');
+  await page.locator('#inspectorContent [data-timeline-action="newStrand"]').click();await page.locator('#timelineStrandName').fill('Maras Suche');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#timelineSceneStrand')).toContainText('Maras Suche');
+  const strand=await page.evaluate(()=>(window as any).__test.project.settings.timeline.strands[0].id);
+  await page.locator('#timelineSceneStrand').selectOption(strand);await page.locator('#timelineStartDay').fill('-1');await page.locator('#timelineStartTime').fill('23:59');await page.locator('#timelineEndDay').fill('1');await page.keyboard.press('Control+s');
+  await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
+  await expect(page.locator('.timeline-lane').filter({has:page.locator('h3',{hasText:'Maras Suche'})})).toContainText('Tag -1');
+  await page.locator('[data-timeline-action="manage"]').click();await expect(page.locator('[data-timeline-action="deleteStrand"]')).toBeDisabled();
+  await page.locator('[data-timeline-action="renameStrand"]').click();await page.locator('#timelineStrandName').fill('Heimkehr');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('.timeline-lane').first()).toContainText('Heimkehr');
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await page.locator('[data-doc="scene"]').click();
+  await expect(page.locator('#timelineStartDay')).toHaveValue('-1');await expect(page.locator('#timelineStartTime')).toHaveValue('23:59');await expect(page.locator('#timelineEndDay')).toHaveValue('1');await expect(page.locator('#timelineSceneStrand')).toHaveValue(strand);
+});
+test('timeline filters, navigation, zoom and theme preserve manuscript order and text',async({page})=>{
+  await timelineFixture(page);const before=await page.evaluate(()=>JSON.stringify((window as any).__test.docs));
+  await expect(page.locator('[data-timeline-scene]')).toHaveCount(3);await expect(page.locator('.timeline-lane').first().locator('[data-timeline-scene]').first()).toHaveAttribute('data-timeline-scene','scene2');
+  await page.locator('#timelineFilter-figure').selectOption('c'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(2);
+  await page.locator('#timelineFilter-strand').selectOption('a'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(1);
+  await page.locator('[data-timeline-scene="scene"]').focus();await page.keyboard.press('Enter');await expect(page.locator('#timelineStartDay')).toHaveValue('2');
+  await page.locator('[data-timeline-action="in"]').click();await page.locator('[data-timeline-action="in"]').click();
+  await page.locator('#timelineScroll').evaluate(el=>{el.scrollLeft=170});
+  await page.locator('#inspectorContent [data-timeline-action="text"]').click();await expect(page.locator('.tiptap').first()).toContainText('Gartentor');
+  await page.locator('[data-view="timeline"]').click();await expect(page.locator('#timelineFilter-figure')).toHaveValue('c'.repeat(32));expect(await page.locator('#timelineScroll').evaluate(el=>el.scrollLeft)).toBe(170);
+  expect(await page.evaluate(()=>JSON.stringify((window as any).__test.docs))).toBe(before);
+  await page.locator('#timelineFilter-strand').selectOption('');await page.locator('#timelineFilter-figure').selectOption('');await page.locator('[data-timeline-action="fit"]').click();
+  await page.screenshot({path:'artifacts/timeline-light.png'});
+  await page.setViewportSize({width:1280,height:760});await page.locator('#inspectorResize').focus();await page.keyboard.press('Home');await page.locator('[data-action="theme"]').click();await page.screenshot({path:'artifacts/timeline-dark.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+test('timeline invalid drafts and save errors block data loss; read-only remains navigable',async({page})=>{
+  await timelineFixture(page);await page.locator('[data-timeline-scene="scene"]').click();
+  await page.locator('#timelineEndDay').fill('0');await expect(page.locator('#timelineFieldError')).toContainText('vor dem Beginn');
+  await page.locator('[data-timeline-scene="third"]').click();await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');await expect(page.locator('#timelineEndDay')).toHaveValue('0');
+  await page.locator('#timelineEndDay').fill('4');await page.evaluate(()=>{(window as any).__test.failSave=true});await page.locator('[data-view="write"]').click();await expect(page.locator('#saveState')).toHaveText('Speichern fehlgeschlagen');await expect(page.locator('#timelineEndDay')).toHaveValue('4');
+  await page.evaluate(()=>{(window as any).__test.failSave=false});await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
+  await page.evaluate(()=>{const p=(window as any).__test.project;p.readOnly=true;sessionStorage.setItem('testSavedProject',JSON.stringify(p))});await page.reload();await page.locator('[data-view="timeline"]').click();await page.locator('[data-timeline-scene="scene"]').click();
+  await expect(page.locator('#timelineStartDay')).toBeDisabled();await expect(page.locator('#timelineEndDay')).toHaveValue('4');await page.locator('#timelineFilter-strand').selectOption('b'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(1);
+});
+test('timeline handles calendar precision, settings failure and project switches',async({page})=>{
+  await page.locator('[data-view="timeline"]').click();await page.locator('#timelineView [data-timeline-action="setup"]').click();await page.locator('#timelineBasis').selectOption('calendar');
+  await page.evaluate(()=>{(window as any).__test.failSettings=true});await page.locator('#dialogSubmit').click();await expect(page.locator('#toast')).toContainText('Einstellungen konnten nicht');await expect(page.locator('#timelineView [data-timeline-action="setup"]')).toBeVisible();
+  await page.evaluate(()=>{(window as any).__test.failSettings=false});await page.locator('#timelineView [data-timeline-action="setup"]').click();await page.locator('#timelineBasis').selectOption('calendar');await page.locator('#dialogSubmit').click();
+  await page.locator('[data-timeline-scene="scene"]').click();await page.locator('#timelineStartDay').fill('2024-02-29');await page.locator('#timelineEndDay').fill('2024-03-01');await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
+  await expect(page.locator('[data-timeline-scene="scene"]')).toContainText('29.02.2024 · tagesgenau');
+  await page.evaluate(()=>{const t=(window as any).__test;t.project.id='different-project';delete t.project.settings.timeline;t.docs.forEach((d:any)=>delete d.meta.timeline);t.listeners.forEach((l:Function)=>l({data:{type:'command',action:'open'}}))});
+  await expect(page.locator('[data-view="write"]')).toHaveClass('active');await page.locator('[data-view="timeline"]').click();await expect(page.locator('#timelineView [data-timeline-action="setup"]')).toBeVisible();
+});
+test('timeline renders 1000 sparse scenes without one element per empty day',async({page})=>{
+  await timelineFixture(page,1000);await expect(page.locator('[data-timeline-scene]')).toHaveCount(1000);expect(await page.locator('.timeline-ticks span').count()).toBeLessThanOrEqual(7);
+  expect(await page.locator('#timelineView *').count()).toBeLessThan(9000);await page.locator('#timelineFilter-strand').selectOption('b'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(499);
+});
+test('timeline settings preserve concurrent scene edits and allow deleting an unused strand',async({page})=>{
+  await timelineFixture(page);await page.locator('[data-timeline-scene="scene"]').click();
+  await page.locator('#inspectorContent [data-timeline-action="newStrand"]').click();await page.locator('#timelineStrandName').fill('Unbenutzt');
+  await page.evaluate(()=>{(window as any).__test.settingsDelay=400});await page.locator('#dialogSubmit').click();
+  await page.locator('#timelineEndDay').fill('4');await expect(page.locator('#timelineSceneStrand')).toContainText('Unbenutzt');await page.keyboard.press('Control+s');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline.end.day)).toBe(4);
+  await expect(page.locator('#timelineEndDay')).toHaveValue('4');await page.locator('[data-timeline-action="manage"]').click();
+  await page.locator('.timeline-strand-entry').filter({hasText:'Unbenutzt'}).locator('[data-timeline-action="deleteStrand"]').click();await page.locator('#dialogSubmit').click();await expect(page.locator('#timelineSceneStrand')).not.toContainText('Unbenutzt');
+  await page.locator('#inspectorContent [data-timeline-action="newStrand"]').click();await page.locator('#timelineStrandName').fill('Verspätet');await page.locator('#dialogSubmit').click();
+  await page.evaluate(()=>{const t=(window as any).__test;t.project.id='new-timeline-project';t.project.settings={};t.docs.forEach((d:any)=>delete d.meta.timeline);t.listeners.forEach((l:Function)=>l({data:{type:'command',action:'open'}}))});
+  await expect(page.locator('[data-view="write"]')).toHaveClass('active');await page.locator('[data-view="timeline"]').click();await expect(page.locator('#timelineView [data-timeline-action="setup"]')).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.project.settings.timeline??null)).toBe(null);
+});
+
 test('welcome lists three recent projects with direct opening and missing-file feedback',async({page})=>{
   const entries=[{title:'Nacht <img src=x onerror=alert(1)>',filePath:'D:\\Romane\\Nacht.schreibprojekt'},{title:'Am See',filePath:'D:\\Romane\\Am See.schreibprojekt'},{title:'Am See',filePath:'E:\\Archiv\\'+('Langer Ordnername\\'.repeat(12))+'Am See.schreibprojekt'},{title:'Viertes Projekt',filePath:'D:\\Vier.schreibprojekt'}];
   await page.evaluate(entries=>{sessionStorage.setItem('testWelcome','true');sessionStorage.setItem('testRecentProjects',JSON.stringify(entries))},entries);await page.reload();
