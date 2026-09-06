@@ -1,8 +1,8 @@
-# Funktionsabdeckung – Alpha 4 (0.1.0-alpha.4)
+# Funktionsabdeckung – Alpha 5 (0.1.0-alpha.5)
 
 Stand: 6. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
 
-Zusätzlich auf `testing`, noch nicht veröffentlicht: [Szenen-Zeitstrahl](ZEITSTRAHL.md) mit Handlungsbahnen, Szenenzeiten und Kartenfiltern sowie [lokale deutsche Stilanalyse](STILANALYSE.md) mit Wiederholungen, Satzlängenübersicht und Füllwörtern/Floskeln. Kein Konto oder LanguageTool-Prozess erforderlich. Kategorien und optionale Automatik werden im Projekt gespeichert.
+Neu in Alpha 5: [Szenen-Zeitstrahl](ZEITSTRAHL.md) mit Handlungsbahnen, Szenenzeiten und Kartenfiltern sowie [lokale deutsche Stilanalyse](STILANALYSE.md) mit Wiederholungen, Satzlängenübersicht und Füllwörtern/Floskeln. Kein Konto oder LanguageTool-Prozess erforderlich. Kategorien und optionale Automatik werden im Projekt gespeichert.
 
 Neu in Alpha 4: Figuren-, Orts- und Gegenstandskarten mit Namen/alternativen Namen, vorgegebenen und eigenen Textfeldern, Szenenzuordnungen, lokaler automatischer Namenserkennung und ausdrücklichen Textverweisen. Karten öffnen rechts im Notizbuch, ohne die Szene zu wechseln. Details und Grenzen: [Figuren, Orte & Gegenstände](FIGUREN-UND-ORTE.md).
 

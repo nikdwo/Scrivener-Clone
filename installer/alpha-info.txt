@@ -1,4 +1,4 @@
-Schreibatelier – Alpha 4 (0.1.0-alpha.4)
+Schreibatelier – Alpha 5 (0.1.0-alpha.5)
 
 Dies ist eine frühe Testversion. Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger.
 
@@ -7,6 +7,8 @@ Die Anwendung wird für dein Windows-Benutzerkonto installiert. Die .NET-Laufzei
 Pandoc und Typst für erweiterte Import-/Exportformate werden separat eingerichtet. Details stehen in README.md. Für das Schreiben ist kein Konto erforderlich.
 
 Die lokale deutsche Sprachprüfung einschließlich Java-Laufzeit ist enthalten. LanguageTool Premium und ChatGPT sind optional; Online-Prüfungen senden Text erst nach deinem ausdrücklichen Start. ChatGPT benötigt die separat installierte Codex CLI und eine eigene Anmeldung.
+
+Neu in Alpha 5: lokale Stilanalyse unter Prüfen sowie der Szenen-Zeitstrahl mit Handlungssträngen unter Ansicht. Beide Funktionen arbeiten ohne Konto oder Netzwerk.
 
 Eine Deinstallation entfernt die Programmdateien. Eigene Projekte, Einstellungen und Sicherungen bleiben erhalten.
 

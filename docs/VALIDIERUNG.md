@@ -1,6 +1,20 @@
-# Validierung – Alpha 4 (0.1.0-alpha.4)
+# Validierung – Alpha 5 (0.1.0-alpha.5)
 
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Alpha-5-Prüfungen, 6. September 2026
+
+Alpha 5 übernimmt die lokale Stilanalyse und den Szenen-Zeitstrahl aus dem geprüften `testing`-Stand `1520220`. Der Release-Build trägt `0.1.0-alpha.5` ohne Testbuild-Zusatz. **Schreibatelier starten** verweist auf `artifacts/Schreibatelier-0.1.0-alpha.5/app/Schreibatelier.exe`.
+
+- Vollständiger Windows-Release-Build und TypeScript-Prüfung bestanden; das Lizenzinventar bestätigt weiterhin 71 Komponenten. Installer, portables ZIP und SHA-256-Datei wurden mit den bestehenden Paketierungsskripten erzeugt. Protokoll: `artifacts/alpha5-build.log`.
+- Alle 19 JavaScript-Logiktests, 161 Core-/Konverterprüfungen (34 Zeitstrahl-, 33 Karten- und 94 weitere Prüfungen) sowie acht Prüfungen der echten lokalen Sprachprüfung bestanden erneut. Protokoll: `artifacts/alpha5-checks.log`.
+- Die vollständige Edge-Testreihe bestand mit 39 erfolgreichen Tests, ohne Fehler, Wiederholungen oder ausgelassene Fälle. Protokoll: `artifacts/alpha5-ui-checks.json`.
+- Die entpackte portable Version bestand den nativen Ablauf einschließlich echter lokaler Sprachkorrektur/Undo, Karten, Stilanalyse und Zeitstrahl. Nach vollständigem Programmende und Ordnerumzug bestätigte ein erneuter Start ausdrücklich die vorherigen Stileinstellungen und Zeitdaten. Benutzerdaten, Sicherungen und WebView-Daten lagen im portablen `Data`-Ordner. Protokoll: `artifacts/alpha5-release-checks-final.log`; Ergebnisse unter `.work/release-check/975288855a0346f3906d6b923e2ab07c/portable-moved/Data/first-result.json` und `result.json`.
+- Die anschließende Installation wurde vor dem eigentlichen Setup durch die Windows-Anwendungssteuerung blockiert. Code-Integrity-Ereignisse 3033 und 3077 vom 6. September 2026 um 21:09:23 Uhr bestätigen, dass der interne Alpha-5-Setup-Prozess die Signaturanforderungen nicht erfüllte. Es entstand keine Testinstallation und kein Deinstallereintrag. **Installation und Deinstallation von Alpha 5 sind auf diesem Prüfrechner nicht bestätigt.** Sicherheitsrichtlinien und Vertrauensspeicher wurden nicht verändert. Protokoll: `artifacts/alpha5-code-integrity.json`.
+
+Der erste Paketlauf bestand den nativen Start, scheiterte aber beim Testumzug an einem versteckten Unterordner im isolierten Codex-Datenverzeichnis. Der Test verwendet jetzt `Move-Item -Force` innerhalb der bereits geprüften Testpfade; der anschließende Umzug und Neustart bestanden. Das war eine Änderung am Testablauf, nicht am Programm. Nach diesen Prüfungen wurden ausschließlich die Begleitdokumente vervollständigt und die Pakete erneut erstellt; der Datei-Abgleich der Programmdateien und Weboberfläche zum nativ geprüften Paket steht in `artifacts/alpha5-package-verification.json`.
+
+Die nachfolgenden Abschnitte dokumentieren die vorherigen Entwicklungs- und Alpha-4-Prüfungen mit ihren damaligen Versionskennungen und Einschränkungen.
 
 ## Zeitstrahl auf testing, 6. September 2026
 

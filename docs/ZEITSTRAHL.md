@@ -1,10 +1,10 @@
-# Szenen-Zeitstrahl – Testversion
+# Szenen-Zeitstrahl – Alpha 5
 
-Diese Erweiterung entsteht auf `testing` und ist noch nicht in den Alpha-4-Downloads enthalten. Sie arbeitet lokal, ohne Konto oder Netzwerk. Die Stilanalyse bleibt enthalten.
+Der Zeitstrahl gehört zu Alpha 5. Er arbeitet lokal, ohne Konto oder Netzwerk. Die Stilanalyse bleibt enthalten.
 
 ## Starten und einrichten
 
-`scripts/build.ps1 -Testing` erstellt `artifacts/Schreibatelier-testing-timeline/app/Schreibatelier.exe` mit der Kennung `0.1.0-alpha.4+testing.timeline` und aktualisiert **Schreibatelier starten** im Projektordner. Das Fenster trägt **Testversion Zeitstrahl**. Der Befehl erstellt keinen Installer und veröffentlicht nichts.
+Alpha 5 installieren und **Schreibatelier Alpha 5** im Startmenü öffnen oder das portable ZIP vollständig entpacken und `Schreibatelier.exe` starten. Im Quellprojekt öffnet **Schreibatelier starten** nach dem Release-Build `artifacts/Schreibatelier-0.1.0-alpha.5/app/Schreibatelier.exe`.
 
 1. Projekt öffnen und **Zeitstrahl** neben Text, Pinnwand und Gliederung wählen. Alternativ: **Ansicht → Zeitstrahl**.
 2. **Zeitstrahl einrichten** wählen. Relative Tage sind vorausgewählt; alternativ stehen Kalenderdaten zur Verfügung. Diese Wahl gilt anschließend dauerhaft für das Projekt. Eine spätere Umrechnung ist nicht enthalten.

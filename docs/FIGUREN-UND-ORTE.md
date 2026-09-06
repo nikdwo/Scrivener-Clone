@@ -1,10 +1,10 @@
-# Figuren, Orte und Gegenstände – Alpha 4
+# Figuren, Orte und Gegenstände – Alpha 5
 
-Figuren, Orte und Gegenstände gehören zu Alpha 4.
+Figuren, Orte und Gegenstände gehören seit Alpha 4 zur Anwendung.
 
 ## Starten und ausprobieren
 
-Alpha 4 installieren oder das portable ZIP entpacken und `Schreibatelier.exe` starten. Der lokale Release-Build liegt unter `artifacts/Schreibatelier-0.1.0-alpha.4/app/Schreibatelier.exe`. Eine bereits laufende ältere Version vorher schließen.
+Alpha 5 installieren oder das portable ZIP entpacken und `Schreibatelier.exe` starten. Der lokale Release-Build liegt unter `artifacts/Schreibatelier-0.1.0-alpha.5/app/Schreibatelier.exe`. Eine bereits laufende ältere Version vorher schließen.
 
 1. Ein Projekt und darin einen Textabschnitt im Manuskript öffnen.
 2. Links im eigenen Bereich **Figuren, Orte & Gegenstände → Figuren → Figur anlegen** wählen und beispielsweise **Mara Berg** eingeben. Alternativ rechts im Notizbuch **Figuren, Orte & Gegenstände → Figur anlegen** wählen. Im schmalen Fenster lässt sich das Notizbuch oben öffnen.

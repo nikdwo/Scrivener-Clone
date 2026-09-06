@@ -1,10 +1,10 @@
-# Lokale deutsche Stilanalyse – Testversion
+# Lokale deutsche Stilanalyse – Alpha 5
 
-Diese Erweiterung liegt auf `testing`; sie ist noch nicht Bestandteil der veröffentlichten Alpha-4-Downloads. Kein Konto, Netzwerk oder LanguageTool-Prozess wird für die Stilanalyse benötigt.
+Die Stilanalyse gehört zu Alpha 5. Kein Konto, Netzwerk oder LanguageTool-Prozess wird dafür benötigt.
 
 ## Starten und verwenden
 
-`scripts/build.ps1 -Testing` erzeugt die selbstständige Windows-Testversion unter `artifacts/Schreibatelier-testing-timeline/app/Schreibatelier.exe` und aktualisiert **Schreibatelier starten** im Projektordner. Die interne Versionskennung ist `0.1.0-alpha.4+testing.timeline`; das Fenster trägt den Zusatz **Testversion Zeitstrahl** (einschließlich Stilanalyse). Der Testbuild enthält weiterhin die lokale Sprachprüfung. Installer und GitHub-Release entstehen durch diesen Befehl nicht.
+Alpha 5 installieren und **Schreibatelier Alpha 5** im Startmenü öffnen oder das portable ZIP vollständig entpacken und `Schreibatelier.exe` starten. Im Quellprojekt öffnet **Schreibatelier starten** nach dem Release-Build `artifacts/Schreibatelier-0.1.0-alpha.5/app/Schreibatelier.exe`.
 
 1. Einen Textabschnitt öffnen, rechts **Prüfen → Prüfverfahren → Stilanalyse · lokal** auswählen.
 2. **Abschnitt analysieren** anklicken. Eine zuvor bewusst markierte Passage wird über **Markierung analysieren** ausgewertet. Bei **Mit Unterabschnitten** zählt nur der aktive Editor.
