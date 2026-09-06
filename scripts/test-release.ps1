@@ -24,6 +24,7 @@ function NativeCheck([string]$AppDirectory, [string]$WorkingDirectory, [string]$
     $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
     Check ($result.ok -eq $true) 'Native Editor-Bridge speichert Text und Fußnote in SQLite'
     Check ($result.checks -contains 'Lokale Sprachprüfung → Markierung → Korrektur → SQLite → Undo') 'Paket prüft und korrigiert mit der echten lokalen Sprachprüfung'
+    Check ($result.checks -contains 'Orts- und Gegenstandskarten → Namenserkennung → SQLite → Wiederöffnen') 'Paket speichert und erkennt Orts- und Gegenstandskarten mit Szenenzuordnungen'
     Check (Test-Path -LiteralPath (Join-Path $AppDirectory 'Proofreading/sources.json')) 'Paket enthält die Herkunftsnachweise der lokalen Sprachprüfung'
     Check ([IO.Path]::GetFullPath($result.storageDirectory) -eq [IO.Path]::GetFullPath($DataDirectory)) 'Benutzerdaten liegen im erwarteten Ordner'
     Check ($result.backupDirectory.StartsWith((Join-Path $DataDirectory 'Backups') + '\', [StringComparison]::OrdinalIgnoreCase)) 'Sicherungen verwenden den ausgewählten Datenordner'

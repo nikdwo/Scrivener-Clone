@@ -1,4 +1,4 @@
-Schreibatelier – Alpha 3 (0.1.0-alpha.3)
+Schreibatelier – Alpha 4 (0.1.0-alpha.4)
 
 Dies ist eine frühe Testversion. Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger.
 

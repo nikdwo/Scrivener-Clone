@@ -4,7 +4,7 @@ Stand: 6. September 2026. Die drei Prüfverfahren sind implementiert. Die lokale
 
 ## Bedienung
 
-**Alpha 3 starten:** Nach der Installation **Schreibatelier Alpha 3** im Startmenü öffnen oder das portable ZIP vollständig entpacken und **Schreibatelier.exe** starten. Im Quellprojekt öffnet die Verknüpfung **Schreibatelier starten** den Build unter `artifacts\Schreibatelier-0.1.0-alpha.3\app\Schreibatelier.exe`. Alpha 1 enthält diese Sprachprüfungsansicht noch nicht.
+**Alpha 4 starten:** Nach der Installation **Schreibatelier Alpha 4** im Startmenü öffnen oder das portable ZIP vollständig entpacken und **Schreibatelier.exe** starten. Im Quellprojekt öffnet die Verknüpfung **Schreibatelier starten** den Build unter `artifacts\Schreibatelier-0.1.0-alpha.4\app\Schreibatelier.exe`. Alpha 1 enthält diese Sprachprüfungsansicht noch nicht.
 
 1. Einen Textabschnitt öffnen und **Prüfen** in der Werkzeugleiste oder im rechten Notizbuch wählen.
 2. Sprache auswählen: Deutsch (Deutschland), Deutsch (Österreich) oder Deutsch (Schweiz). Die Sprache wird im Projekt gespeichert.

@@ -91,7 +91,7 @@ public sealed class ProjectStore : IDisposable
     private static DocumentInfo Get(SqliteConnection db, string id)
     {
         using var cmd = Command(db, "SELECT " + Columns + " FROM documents WHERE id=$id", ("$id", id)); using var r = cmd.ExecuteReader();
-        if (!r.Read()) throw new KeyNotFoundException("Abschnitt nicht gefunden."); var document = Read(r, true); Model.ValidateBody(document.Body!); return document;
+        if (!r.Read()) throw new KeyNotFoundException("Abschnitt nicht gefunden."); var document = Read(r, true); Model.ValidateBody(document.Body!); Model.ValidateMeta(document.Meta, document.Kind); return document;
     }
     public DocumentInfo GetDocument(string id) { using var db = Connect(); return Get(db, id); }
     public ProjectInfo GetProject()
@@ -106,6 +106,7 @@ public sealed class ProjectStore : IDisposable
             if (!byId.TryGetValue(root, out var d) || d.ParentId is not null || d.Kind != "folder" || d.Deleted) throw new InvalidDataException("Beschädigte Projektbereiche.");
         foreach (var d in list)
         {
+            Model.ValidateMeta(d.Meta, d.Kind);
             var chain = new HashSet<string>(); var current = d;
             while (!validated.Contains(current.Id))
             {
@@ -119,6 +120,7 @@ public sealed class ProjectStore : IDisposable
     }
     private static void Insert(SqliteConnection db, DocumentInfo d)
     {
+        Model.ValidateMeta(d.Meta, d.Kind);
         var body = d.Body ?? Model.EmptyBody; Model.ValidateBody(body); var plain = Model.PlainText(body);
         Execute(db, "INSERT INTO documents(" + Columns + ",plain) VALUES($id,$parent,$pos,$title,$kind,$body,$meta,0,0,$words,$modified,$plain)", ("$id", d.Id), ("$parent", d.ParentId), ("$pos", d.Position), ("$title", d.Title), ("$kind", d.Kind), ("$body", body), ("$meta", d.Meta.ToJsonString()), ("$words", Model.WordCount(plain)), ("$modified", d.Modified), ("$plain", plain));
     }
@@ -142,6 +144,7 @@ public sealed class ProjectStore : IDisposable
             if (old.Revision != d.Revision) throw new RevisionConflictException("Der Abschnitt wurde inzwischen geändert. Ihre Eingabe bleibt im Editor; speichern Sie sie separat, bevor Sie neu laden.");
             if (old.Deleted) throw new InvalidDataException("Dieser Abschnitt liegt im Papierkorb.");
             if (string.IsNullOrWhiteSpace(d.Title) || d.Title.Length > 500 || d.Meta.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Titel oder Metadaten sind ungültig.");
+            Model.ValidateMeta(d.Meta, old.Kind);
             var body = d.Body ?? old.Body!; Model.ValidateBody(body); var plain = Model.PlainText(body); var words = Model.WordCount(plain);
             if (snapshotBefore) InsertSnapshot(db, old, "Vor Suchen und Ersetzen");
             Execute(db, "UPDATE documents SET title=$title,body=$body,meta=$meta,words=$words,plain=$plain,revision=revision+1,modified=$now WHERE id=$id", ("$id", d.Id), ("$title", d.Title), ("$body", body), ("$meta", d.Meta.ToJsonString()), ("$words", words), ("$plain", plain), ("$now", DateTimeOffset.UtcNow.ToString("O")));
@@ -174,6 +177,7 @@ public sealed class ProjectStore : IDisposable
     public void SaveSettings(string title, JsonObject settings)
     {
         Writable(); if (string.IsNullOrWhiteSpace(title) || title.Length > 500 || settings.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Ungültige Projekteinstellungen.");
+        if (settings.ContainsKey("recognizeCardNames") && (settings["recognizeCardNames"] is not JsonValue flag || !flag.TryGetValue<bool>(out _))) throw new InvalidDataException("Ungültige Einstellung für die Namenserkennung.");
         using var db = Connect(); Execute(db, "UPDATE project SET title=$title,settings=$settings", ("$title", title), ("$settings", settings.ToJsonString()));
     }
     public DocumentInfo Split(string id, long revision, string firstBody, string secondBody, string title)
@@ -186,6 +190,7 @@ public sealed class ProjectStore : IDisposable
         InsertSnapshot(db, original, "Vor Teilen");
         Execute(db, "UPDATE documents SET position=position+1,revision=revision+1 WHERE parent_id=$parent AND position>$pos", ("$parent", parent), ("$pos", original.Position));
         var second = new DocumentInfo { ParentId = parent, Position = original.Position + 1, Title = title, Kind = original.Kind == "script" ? "script" : "text", Body = secondBody };
+        if (original.Meta["storyCardIds"] is JsonArray cardIds) second.Meta["storyCardIds"] = cardIds.DeepClone();
         Insert(db, second); UpdateBody(db, id, firstBody); tx.Commit(); return GetDocument(second.Id);
     }
     private static void UpdateBody(SqliteConnection db, string id, string body)
@@ -203,7 +208,15 @@ public sealed class ProjectStore : IDisposable
         foreach (var child in JsonNode.Parse(second.Body!)!["content"]?.AsArray() ?? new()) content.Add(child!.DeepClone());
         var body = root.ToJsonString(); Model.ValidateBody(body);
         InsertSnapshot(db, first, "Vor Zusammenführen"); InsertSnapshot(db, second, "Vor Zusammenführen");
-        UpdateBody(db, firstId, body); Execute(db, "UPDATE documents SET deleted=1,revision=revision+1 WHERE id=$id", ("$id", secondId));
+        UpdateBody(db, firstId, body);
+        if (first.Meta.ContainsKey("storyCardIds") || second.Meta.ContainsKey("storyCardIds"))
+        {
+            first.Meta["storyCardIds"] = new JsonArray((first.Meta["storyCardIds"]?.AsArray() ?? new()).Concat(second.Meta["storyCardIds"]?.AsArray() ?? new())
+                .Select(n => n!.GetValue<string>()).Distinct(StringComparer.Ordinal).Select(id => (JsonNode?)JsonValue.Create(id)).ToArray());
+            Model.ValidateMeta(first.Meta, first.Kind);
+            Execute(db, "UPDATE documents SET meta=$meta WHERE id=$id", ("$id", firstId), ("$meta", first.Meta.ToJsonString()));
+        }
+        Execute(db, "UPDATE documents SET deleted=1,revision=revision+1 WHERE id=$id", ("$id", secondId));
         tx.Commit(); return GetDocument(firstId);
     }
     private static void InsertSnapshot(SqliteConnection db, DocumentInfo document, string title) => Execute(db, "INSERT INTO snapshots VALUES($id,$doc,$title,$now,$body,$meta)", ("$id", Model.Id()), ("$doc", document.Id), ("$title", title), ("$now", DateTimeOffset.UtcNow.ToString("O")), ("$body", document.Body), ("$meta", document.Meta.ToJsonString()));

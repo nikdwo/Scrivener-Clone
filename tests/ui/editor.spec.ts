@@ -5,6 +5,8 @@ test.beforeEach(async({page})=>{
     const body=(text:string)=>JSON.stringify({type:'doc',content:[{type:'paragraph',content:text?[{type:'text',text}]:[]}]});
     const docs:any[]=[{id:'manuscript',title:'Manuskript',parentId:null,position:0,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'research',title:'Recherche',parentId:null,position:1,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'chapter',title:'Kapitel 1 · Ankunft',parentId:'manuscript',position:0,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'scene',title:'Das Haus am See',parentId:'chapter',position:0,kind:'text',body:body('Der Morgen lag still über dem See. Mara blieb am Gartentor stehen. In ihrer Manteltasche lag der Schlüssel.'),meta:{synopsis:'Mara kehrt an den Ort ihrer Kindheit zurück. Ein alter Schlüssel führt sie zu einer offenen Frage.',status:'Entwurf',tags:'Mara, Heimkehr',color:'#b77d4e'},revision:0,words:21},{id:'scene2',title:'Ein unerwarteter Brief',parentId:'chapter',position:1,kind:'text',body:body('Auf dem Küchentisch lag ein Umschlag.'),meta:{synopsis:'Ein Brief verändert alles.',status:'Idee'},revision:0,words:6}];
     const project:any={id:'test',title:'Ein neuer Morgen',settings:{wordTarget:80000},documents:docs,readOnly:false,filePath:'test.schreibprojekt'};
+    const persisted=JSON.parse(sessionStorage.getItem('testSavedProject')??'null');
+    if(persisted){docs.splice(0,docs.length,...persisted.documents);Object.assign(project,persisted,{documents:docs})}
     const listeners:Function[]=[];const snapshots:any[]=[];const clone=(x:any)=>JSON.parse(JSON.stringify(x));
     (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots,proofDelay:0,proofCalls:[],premiumConnected:false,listeners};
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
@@ -38,6 +40,12 @@ test.beforeEach(async({page})=>{
         else if(action==='save'||action==='replace'){await new Promise(r=>setTimeout(r,(window as any).__test.saveDelay));if((window as any).__test.failSave)throw new Error('Datenträger ist schreibgeschützt.');result=args.documents.map((d:any)=>{const old=docs.find(x=>x.id===d.id);if(old.revision!==d.revision)throw new Error('Versionskonflikt');if(action==='replace')snapshots.push({...clone(old),documentId:old.id,title:'Vor Suchen und Ersetzen'});Object.assign(old,clone(d),{revision:d.revision+1});return clone(old)})}
         else if(action==='create'){const d={id:crypto.randomUUID(),parentId:args.parent,title:args.title,kind:args.kind,body:args.body??body(''),meta:args.meta??{},position:docs.filter(x=>x.parentId===args.parent).length,revision:0,words:0};docs.push(d);result=clone(d)}
         else if(action==='snapshot'){const d=docs.find(d=>d.id===args.id);const s={id:crypto.randomUUID(),documentId:d.id,title:args.title,created:new Date().toISOString(),body:d.body,meta:clone(d.meta)};snapshots.push(s);result=s.id}
+        else if(action==='trash'){
+          if(project.readOnly)throw new Error('Dieses Projekt ist schreibgeschützt.');
+          if(['manuscript','research'].includes(args.id))throw new Error('Die Projektbereiche bleiben erhalten.');
+          const d=docs.find(d=>d.id===args.id);if(!args.deleted&&docs.find(p=>p.id===d.parentId)?.deleted)throw new Error('Bitte zuerst den übergeordneten Ordner wiederherstellen.');
+          const visit=(id:string)=>{const item=docs.find(d=>d.id===id);item.deleted=args.deleted;item.revision++;for(const child of docs.filter(d=>d.parentId===id))visit(child.id)};visit(d.id);result=clone(project);
+        }
         else if(action==='snapshots')result=clone(snapshots.filter(s=>s.documentId===args.id));
         else if(action==='settings'){project.title=args.title;project.settings=args.settings;result=clone(project)}
         else if(action==='search')result=docs.filter(d=>d.body.includes(args.query)||d.title.includes(args.query)).map(d=>({...d,excerpt:'Gefundener Text'}));
@@ -282,4 +290,239 @@ test('local automatic proofreading never triggers online calls and read-only cor
   await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
   await page.evaluate(()=>{(window as any).__test.project.readOnly=true;document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
   await page.locator('[data-doc="scene"]').click();await page.locator('#proofRun').click();await expect(page.locator('[data-proof-action="replace"]').first()).toBeDisabled();
+});
+
+async function newStoryCard(page:any,type:string,name:string) {
+  await page.locator('[data-inspector="cards"]').click();
+  await page.locator(`[data-story-action="${type==='figure'?'newFigure':type==='place'?'newPlace':'newItem'}"]`).click();
+  await page.locator('#storyNewName').fill(name);await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#storyTitle')).toHaveValue(name);
+}
+
+async function trashFromContext(page:any,id:string) {
+  await page.locator(`#tree [data-doc="${id}"]`).click({button:'right'});
+  await page.locator('#contextTrash').click();await expect(page.locator('#dialog')).toBeVisible();
+  await page.locator('#dialogSubmit').click();await expect(page.locator(`#tree [data-doc="${id}"]`)).toHaveCount(0);
+}
+
+test('item cards persist fields aliases and assignments and restore through the context menu',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="newStoryItem"]').click();
+  await expect(page.locator('#dialogTitle')).toHaveText('Gegenstand anlegen');await page.locator('#storyNewName').fill('Silberschlüssel');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#storyDetail h3')).toHaveText('Gegenstand bearbeiten');await page.locator('#storyAliases').fill('Schlüssel');
+  const fields={description:'Ein kleiner Schlüssel.',features:'Silber mit einer Kerbe.',owner:'Mara',origin:'Von ihrer Großmutter.',significance:'Öffnet das verborgene Zimmer.',notes:'Nicht verlieren.'};
+  for(const [name,value] of Object.entries(fields))await page.locator('#storyField-'+name).fill(value);
+  await page.locator('[data-story-action="addField"]').click();await page.locator('#storyFieldName').fill('Gewicht');await page.locator('#dialogSubmit').click();await page.locator('#storyCustom-0').fill('90 g');
+  await page.locator('[data-story-action="assign"]').click();await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText('Schlüssel');
+  const editor=await page.locator('.editor-sheet .tiptap').elementHandle();await page.locator('.editor-sheet [data-story-ids]').click();await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');expect(await editor!.evaluate(el=>el.isConnected)).toBe(true);
+  await page.locator('[data-doc="scene2"]').click();await page.locator('[data-story-action="assign"]').click();await expect(page.locator('[data-story-action="scene"]')).toHaveCount(2);
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Silberschlüssel und Schlüssel.');await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText(['Silberschlüssel','Schlüssel']);
+  await page.locator('#storyFilter').selectOption('item');await page.locator('#storySearch').fill('Schlüssel');await expect(page.locator('#storyList button')).toHaveText(['Silberschlüssel · Gegenstand']);
+  await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  const id=await page.locator('[data-story-group="story-item"] [data-doc]').getAttribute('data-doc');
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await page.locator('[data-doc="scene2"]').click();
+  await page.locator(`[data-story-group="story-item"] [data-doc="${id}"]`).focus();await page.keyboard.press('Enter');
+  for(const [name,value] of Object.entries(fields))await expect(page.locator('#storyField-'+name)).toHaveValue(value);
+  await expect(page.locator('#storyCustom-0')).toHaveValue('90 g');await expect(page.locator('[data-story-action="scene"]')).toHaveCount(2);await expect(page.locator('#storyAliases')).toHaveValue('Schlüssel');
+  await expect(page.locator('[data-tree-root="research"]')).not.toContainText('Silberschlüssel');
+  await trashFromContext(page,id!);await expect(page.locator('#storyAssigned')).toContainText('Silberschlüssel (nicht verfügbar)');await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);
+  await page.locator('[data-action="showTrash"]').click();await page.locator(`[data-restore-doc="${id}"]`).click();await page.locator('[data-doc="scene2"]').click();
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText(['Silberschlüssel','Schlüssel']);await page.locator(`#tree [data-doc="${id}"]`).click();await expect(page.locator('#storyField-owner')).toHaveValue('Mara');
+  await page.screenshot({path:'artifacts/items-light.png'});
+  await page.setViewportSize({width:960,height:540});await page.locator('[data-action="theme"]').click();await page.locator('[data-story-group="story-item"]').scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.getElementById('tree')!.scrollWidth<=document.getElementById('tree')!.clientWidth&&document.getElementById('notebook')!.scrollWidth<=document.getElementById('notebook')!.clientWidth)).toBe(true);
+  await page.screenshot({path:'artifacts/items-dark.png'});
+});
+
+test('item cards are available from templates and notebook and protect unsaved and read-only fields',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="templates"]').click();await page.locator('#template').selectOption('item');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#dialogTitle')).toHaveText('Gegenstand anlegen');await page.locator('#storyNewName').fill('Laterne');await page.locator('#dialogSubmit').click();await expect(page.locator('#storyDetail h3')).toHaveText('Gegenstand bearbeiten');
+  await newStoryCard(page,'item','Brief');await page.evaluate(()=>(window as any).__test.failSave=true);await page.locator('#storyField-origin').fill('Vom König.');await page.keyboard.press('Control+s');
+  await expect(page.locator('#saveState')).toContainText('fehlgeschlagen');await page.locator('[data-doc="scene2"]').click();await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');await expect(page.locator('#storyField-origin')).toHaveValue('Vom König.');
+  await page.evaluate(()=>(window as any).__test.failSave=false);await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  await page.evaluate(()=>{const p=(window as any).__test.project;p.readOnly=true;sessionStorage.setItem('testSavedProject',JSON.stringify(p))});await page.reload();
+  await expect(page.locator('[data-action="newStoryItem"]')).toBeDisabled();await page.locator('[data-story-group="story-item"] [data-doc]').filter({hasText:'Brief'}).click();await expect(page.locator('[data-story-action="newItem"]')).toBeDisabled();
+  await expect(page.locator('#storyField-origin')).toHaveValue('Vom König.');await expect(page.locator('#storyField-origin')).toBeDisabled();await expect(page.locator('[data-story-action="trash"]')).toBeDisabled();
+});
+
+test('context trash targets the clicked section and restores whole folders',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Ungespeicherter Zusatz.');
+  const editor=await page.locator('.editor-sheet .tiptap').elementHandle();
+  await page.locator('[data-doc="scene2"]').click({button:'right'});
+  await expect(page.locator('#documentContextTitle')).toHaveText('Ein unerwarteter Brief');await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  await page.locator('#contextTrash').click();await expect(page.locator('#dialogBody')).toContainText('Ein unerwarteter Brief');
+  await page.locator('.dialog-actions [value="cancel"]').click();await expect(page.locator('[data-doc="scene2"]')).toBeVisible();
+  await trashFromContext(page,'scene2');await expect(page.locator('#trashCount')).toHaveText('1');await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  expect(await editor!.evaluate(el=>el.isConnected)).toBe(true);
+  expect(await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body)).toContain('Ungespeicherter Zusatz.');
+  await page.locator('[data-action="showTrash"]').click();await page.locator('[data-restore-doc="scene2"]').click();
+  await expect(page.locator('[data-doc="scene2"]')).toBeVisible();await expect(page.locator('[data-restore-doc]')).toHaveCount(0);await expect(page.locator('#trashCount')).toHaveText('0');
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-doc="chapter"]').focus();await page.keyboard.press('Shift+F10');
+  await expect(page.locator('#contextTrash')).toBeFocused();await page.keyboard.press('Escape');await expect(page.locator('#documentContextMenu')).toBeHidden();await expect(page.locator('[data-doc="chapter"]')).toBeFocused();
+  await page.keyboard.press('Shift+F10');await page.keyboard.press('Enter');await expect(page.locator('#dialogBody')).toContainText('2 Untereinträge');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#documentTitle')).toHaveValue('Manuskript');await expect(page.locator('#trashCount')).toHaveText('3');await expect(page.locator('[data-doc="scene"]')).toHaveCount(0);
+  await page.locator('[data-action="showTrash"]').click();await page.locator('[data-restore-doc="chapter"]').click();await expect(page.locator('#trashCount')).toHaveText('0');await expect(page.locator('[data-doc="scene"]')).toBeVisible();
+  await page.locator('[data-doc="manuscript"]').click({button:'right'});await expect(page.locator('#contextTrash')).toBeDisabled();await expect(page.locator('#documentContextHint')).toContainText('Projektbereiche');
+  await page.keyboard.press('Escape');await page.locator('[data-doc="chapter"]').click();await page.locator('[data-view="board"]').click();
+  await page.locator('[data-card="scene2"]').click({button:'right'});await page.locator('#contextTrash').click();await page.locator('#dialogSubmit').click();await expect(page.locator('[data-card]')).toHaveCount(1);
+});
+
+test('context trash handles figures places and research files with recoverable assignments',async({page})=>{
+  await page.evaluate(()=>{const p=(window as any).__test.project,base={body:JSON.stringify({type:'doc',content:[{type:'paragraph'}]}),parentId:'research',revision:0,words:0,meta:{}};p.documents.push({...base,id:'research-note',title:'Recherche-Notiz',position:0,kind:'text'},{...base,id:'research-file',title:'Landkarte.pdf',position:1,kind:'asset',meta:{assetId:'map',mime:'application/pdf'}});sessionStorage.setItem('testSavedProject',JSON.stringify(p))});await page.reload();
+  await page.locator('[data-doc="scene"]').click();await newStoryCard(page,'figure','Mara');await page.locator('#storyField-notes').fill('Wichtige Figurennotiz');await page.locator('[data-story-action="assign"]').click();
+  await newStoryCard(page,'place','Altes Haus');await page.locator('[data-story-action="assign"]').click();await page.locator('#storyField-atmosphere').fill('Still und verlassen.');
+  const ids=await page.evaluate(()=>(window as any).__test.docs.filter((d:any)=>d.meta.storyCard).map((d:any)=>d.id));
+  await page.locator(`#tree [data-doc="${ids[0]}"]`).click({button:'right'});await page.screenshot({path:'artifacts/context-trash-light.png'});await page.keyboard.press('Escape');
+  for(const id of [...ids,'research-note','research-file'])await trashFromContext(page,id);
+  await expect(page.locator('#trashCount')).toHaveText('4');await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  await expect(page.locator('#storyAssigned')).toContainText('Mara (nicht verfügbar)');await expect(page.locator('#storyAssigned')).toContainText('Altes Haus (nicht verfügbar)');await expect(page.locator('#storyTitle')).toHaveCount(0);
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);
+  await page.locator('[data-action="showTrash"]').click();for(const id of [...ids,'research-note','research-file'])await page.locator(`[data-restore-doc="${id}"]`).click();
+  await expect(page.locator('#trashCount')).toHaveText('0');await expect(page.locator('[data-restore-doc]')).toHaveCount(0);
+  await page.locator('[data-doc="scene"]').click();await page.locator(`#tree [data-doc="${ids[0]}"]`).click();await expect(page.locator('#storyField-notes')).toHaveValue('Wichtige Figurennotiz');await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText('Mara');
+  await page.locator(`#tree [data-doc="${ids[1]}"]`).click();await expect(page.locator('#storyField-atmosphere')).toHaveValue('Still und verlassen.');
+  await page.setViewportSize({width:960,height:540});await page.locator('[data-action="theme"]').click();await page.locator('[data-doc="research-file"]').click({button:'right'});
+  expect(await page.locator('#documentContextMenu').evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})).toBe(true);
+  await page.screenshot({path:'artifacts/context-trash-dark.png'});
+});
+
+test('context trash preserves drafts on save errors and respects read-only and project changes',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await page.evaluate(()=>(window as any).__test.failSave=true);
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Dieser Text bleibt.');
+  await page.locator('[data-doc="scene2"]').click({button:'right'});await page.locator('#contextTrash').click();
+  await expect(page.locator('#saveState')).toContainText('fehlgeschlagen');await expect(page.locator('#dialog')).toBeHidden();await expect(page.locator('[data-doc="scene2"]')).toBeVisible();await expect(page.locator('.editor-sheet .tiptap')).toContainText('Dieser Text bleibt.');
+  await page.evaluate(()=>(window as any).__test.failSave=false);await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  await page.evaluate(()=>{const t=(window as any).__test;t.project.readOnly=true;t.docs.find((d:any)=>d.id==='scene2').deleted=true;sessionStorage.setItem('testSavedProject',JSON.stringify(t.project))});await page.reload();
+  await page.locator('[data-doc="scene"]').click({button:'right'});await expect(page.locator('#contextTrash')).toBeDisabled();await expect(page.locator('#documentContextHint')).toContainText('schreibgeschützt');await page.keyboard.press('Escape');
+  await page.locator('[data-action="showTrash"]').click();await expect(page.locator('[data-restore-doc="scene2"]')).toBeDisabled();
+  await page.locator('[data-doc="scene"]').click({button:'right'});await page.evaluate(()=>{const t=(window as any).__test;t.project.id='another-project';t.listeners.forEach((l:Function)=>l({data:{type:'command',action:'open'}}))});
+  await expect(page.locator('#documentContextMenu')).toBeHidden();await expect(page.locator('#documentTitle')).toHaveValue('Manuskript');
+});
+
+test('sidebar separates existing and new story cards from research and keeps the scene open',async({page})=>{
+  await page.evaluate(()=>{
+    const p=(window as any).__test.project,base={kind:'text',body:JSON.stringify({type:'doc',content:[{type:'paragraph'}]}),parentId:'research',revision:0,words:0};
+    p.documents.push({...base,id:'existing-figure',title:'Mara',position:0,meta:{storyCard:{type:'figure',aliases:[],fields:{}},custom:{}}},{...base,id:'research-note',title:'Historische Quellen',position:1,meta:{}});
+    sessionStorage.setItem('testSavedProject',JSON.stringify(p));
+  });await page.reload();await page.locator('[data-doc="scene"]').click();
+  const figures=page.locator('[data-story-group="story-figure"]'),places=page.locator('[data-story-group="story-place"]'),research=page.locator('[data-tree-root="research"]');
+  await expect(figures.locator('[data-doc]')).toHaveCount(1);await expect(research).toContainText('Historische Quellen');await expect(research).not.toContainText('Mara');
+  await figures.locator('[data-action="newStoryFigure"]').click();await page.locator('#storyNewName').fill('Nora');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#storyTitle')).toHaveValue('Nora');await page.locator('#storyTitle').fill('Nora Berg');await page.keyboard.press('Control+s');
+  await expect(figures.locator('.row-label')).toHaveText(['Mara','Nora Berg']);
+  await places.locator('[data-action="newStoryPlace"]').click();await page.locator('#storyNewName').fill('Altes Haus');await page.locator('#dialogSubmit').click();
+  await expect(places.locator('.row-label')).toHaveText(['Altes Haus']);await expect(research.locator('[data-doc]')).toHaveCount(2);
+  await figures.locator('summary').focus();await page.keyboard.press('Enter');await expect(figures).not.toHaveAttribute('open');
+  await page.locator('[data-doc="scene2"]').click();await expect(figures).not.toHaveAttribute('open');
+  await figures.locator('summary').focus();await page.keyboard.press('Enter');await expect(figures).toHaveAttribute('open');
+  const editor=await page.locator('.editor-sheet .tiptap').elementHandle();
+  await figures.locator('[data-doc="existing-figure"]').focus();await page.keyboard.press('Enter');
+  await expect(page.locator('#storyTitle')).toHaveValue('Mara');await expect(page.locator('#documentTitle')).toHaveValue('Ein unerwarteter Brief');
+  expect(await editor!.evaluate(el=>el.isConnected)).toBe(true);
+  await page.locator('[data-doc="research"]').click();await page.locator('[data-view="board"]').click();
+  await expect(page.locator('[data-card]')).toHaveCount(1);await expect(page.locator('[data-card]')).toContainText('Historische Quellen');
+  await page.locator('[data-view="outline"]').click();await expect(page.locator('[data-outline]')).toHaveCount(1);
+  await page.locator('[data-view="write"]').click();await page.locator('#combined').check();await expect(page.locator('.section-label')).toHaveText(['Recherche','Historische Quellen']);
+  await page.locator('#combined').uncheck();await page.locator('[data-doc="scene"]').click();
+  await page.screenshot({path:'artifacts/storycards-sidebar-light.png'});
+  await page.setViewportSize({width:960,height:540});await page.locator('[data-action="theme"]').click();await places.scrollIntoViewIfNeeded();
+  expect(await page.locator('#tree').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await page.screenshot({path:'artifacts/storycards-sidebar-dark.png'});
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();
+  await expect(figures.locator('.row-label')).toHaveText(['Mara','Nora Berg']);await expect(places.locator('.row-label')).toHaveText(['Altes Haus']);await expect(research.locator('[data-doc]')).toHaveCount(2);
+});
+
+test('story cards keep the scene open, persist fields and assignments, recognize aliases and restore from trash',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();
+  await newStoryCard(page,'figure','Mara');
+  await page.locator('#storyAliases').fill('Heimkehrerin');await page.locator('#storyField-motivation').fill('Die Wahrheit über den Schlüssel finden.');
+  await page.locator('[data-story-action="addField"]').click();await page.locator('#storyFieldName').fill('Lieblingsfarbe');await page.locator('#dialogSubmit').click();
+  await page.locator('#storyCustom-0').fill('Blau');
+  await page.locator('[data-story-action="renameField"]').click();await page.locator('#storyFieldName').fill('Augenfarbe');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('label[for="storyCustom-0"]')).toHaveText('Augenfarbe');await expect(page.locator('#storyCustom-0')).toHaveValue('Blau');
+  await page.locator('[data-story-action="assign"]').click();await expect(page.locator('#storyAssigned')).toContainText('Mara');
+  await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  const original=await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body);
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText('Mara');
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');
+  const cursor=await page.evaluate(()=>{const s=getSelection()!;return {anchor:s.anchorOffset,focus:s.focusOffset,text:s.anchorNode?.textContent,scroll:document.getElementById('editorPane')!.scrollTop}});
+  await page.locator('.editor-sheet [data-story-ids]').click();await expect(page.locator('#storyTitle')).toHaveValue('Mara');
+  expect(await page.evaluate(()=>{const s=getSelection()!;return {anchor:s.anchorOffset,focus:s.focusOffset,text:s.anchorNode?.textContent,scroll:document.getElementById('editorPane')!.scrollTop}})).toEqual(cursor);
+  expect(await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body)).toBe(original);
+  await page.locator('[data-doc="scene2"]').click();await page.locator('[data-story-action="assign"]').click();
+  await expect(page.locator('[data-story-action="scene"]')).toHaveCount(2);
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Die Heimkehrerin wartet.');
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText('Heimkehrerin');
+  await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();
+  await page.locator('[data-doc="scene2"]').click();await page.locator('[data-inspector="cards"]').click();await page.locator('#storyAssigned [data-story-action="open"]').click();
+  await expect(page.locator('#storyField-motivation')).toHaveValue('Die Wahrheit über den Schlüssel finden.');await expect(page.locator('#storyCustom-0')).toHaveValue('Blau');
+  await expect(page.locator('[data-story-action="scene"]')).toHaveCount(2);
+  await page.locator('[data-story-action="trash"]').click();await page.locator('#dialogSubmit').click();await expect(page.locator('#storyAssigned')).toContainText('nicht verfügbar');
+  await expect(page.locator('[data-story-group="story-figure"] [data-doc]')).toHaveCount(0);
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);
+  await page.locator('[data-action="showTrash"]').click();await page.locator('[data-restore-doc]').click();
+  await expect(page.locator('[data-story-group="story-figure"] .row-label')).toHaveText(['Mara']);
+  await page.locator('[data-doc="scene2"]').click();await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveText('Heimkehrerin');
+  await newStoryCard(page,'place','Haus am See');await page.locator('#storyField-atmosphere').fill('Still und verlassen.');await page.locator('[data-story-action="assign"]').click();
+  await page.locator('#storySearch').fill('Haus');await expect(page.locator('#storyList [data-story-action="open"]')).toHaveCount(1);
+  await page.locator('#storyFilter').selectOption('figure');await expect(page.locator('#storyList')).toContainText('Keine passenden');
+  await page.locator('#storyFilter').selectOption('place');await expect(page.locator('#storyList')).toContainText('Haus am See');
+  await page.setViewportSize({width:960,height:540});await page.locator('[data-action="theme"]').click();
+  await page.screenshot({path:'artifacts/storycards-compact-dark.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.getElementById('notebook')!.scrollWidth<=document.getElementById('notebook')!.clientWidth)).toBe(true);
+});
+
+test('ambiguous names, explicit links and recognition toggle preserve text and editor undo',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await newStoryCard(page,'figure','Mara');
+  await newStoryCard(page,'figure','Andere Mara');await page.locator('#storyAliases').fill('Mara');
+  await page.locator('.editor-sheet [data-story-ids]').click();await expect(page.locator('#storyCardsPanel')).toContainText('Name mehrdeutig');
+  await page.locator('#storyList [data-story-action="open"]').filter({hasText:'Andere Mara'}).click();
+  await page.locator('#storyField-notes').fill('Diese Notiz bleibt beim Umschalten erhalten.');
+  await page.locator('#storyRecognition').uncheck();await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);
+  await expect(page.locator('#storyField-notes')).toHaveValue('Diese Notiz bleibt beim Umschalten erhalten.');
+  await page.locator('#storyRecognition').check();await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(1);
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Verweis');
+  await page.keyboard.press('Control+Shift+ArrowLeft');await page.locator('[data-story-action="link"]').click();
+  await expect(page.locator('.editor-sheet a')).toHaveText('Verweis');
+  await page.locator('.editor-sheet a').click();await expect(page.locator('#storyTitle')).toHaveValue('Andere Mara');await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+z');await expect(page.locator('.editor-sheet a')).toHaveCount(0);
+  await expect(page.locator('.editor-sheet .tiptap')).toContainText('Verweis');
+  await page.locator('#storyTitle').fill('Neue Mara');await page.locator('#storyAliases').fill('');
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(1);
+  await page.locator('.editor-sheet [data-story-ids]').click();await expect(page.locator('#storyTitle')).toHaveValue('Mara');
+  await page.locator('#storyList [data-story-action="open"]').filter({hasText:'Neue Mara'}).click();await expect(page.locator('#storyField-notes')).toHaveValue('Diese Notiz bleibt beim Umschalten erhalten.');
+});
+
+test('story cards retain edits on save failure and enforce read-only access',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await newStoryCard(page,'figure','Mara');
+  await page.evaluate(()=>(window as any).__test.failSave=true);
+  await page.locator('#storyField-conflict').fill('Diese Eingabe muss bleiben.');await page.keyboard.press('Control+s');
+  await expect(page.locator('#saveState')).toContainText('fehlgeschlagen');
+  await page.locator('[data-doc="scene2"]').click();await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  await expect(page.locator('#storyField-conflict')).toHaveValue('Diese Eingabe muss bleiben.');
+  await page.evaluate(()=>(window as any).__test.failSave=false);await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  await page.evaluate(()=>{const p=(window as any).__test.project;p.readOnly=true;sessionStorage.setItem('testSavedProject',JSON.stringify(p))});await page.reload();
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-inspector="cards"]').click();await page.locator('#storyList button').click();
+  await expect(page.locator('#storyField-conflict')).toHaveValue('Diese Eingabe muss bleiben.');await expect(page.locator('#storyField-conflict')).toBeDisabled();
+  await expect(page.locator('[data-story-action="newFigure"]')).toBeDisabled();await expect(page.locator('[data-story-action="trash"]')).toBeDisabled();
+  await expect(page.locator('[data-action="newStoryFigure"]')).toBeDisabled();await expect(page.locator('[data-action="newStoryPlace"]')).toBeDisabled();
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(1);
+});
+
+test('story name decorations follow combined editors, keyboard navigation and project changes',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await newStoryCard(page,'figure','Mara');
+  await page.locator('[data-doc="chapter"]').click();await page.locator('#combined').check();
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(1);
+  const second=page.locator('.editor-sheet .tiptap[aria-label="Text: Ein unerwarteter Brief"]');
+  await second.click();await page.keyboard.press('Control+End');await page.keyboard.type(' Mara wartet.');
+  await expect(page.locator('#documentTitle')).toHaveValue('Ein unerwarteter Brief');await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(2);
+  await page.locator('#storyDetected button').focus();await page.keyboard.press('Enter');await expect(page.locator('#storyTitle')).toHaveValue('Mara');
+  await expect(page.locator('#documentTitle')).toHaveValue('Ein unerwarteter Brief');
+  await page.locator('#storyTitle').fill('Andere Figur');await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);
+  await page.locator('#storyTitle').fill('Mara');await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(2);
+  await page.locator('#storyDetail').scrollIntoViewIfNeeded();await page.screenshot({path:'artifacts/storycards-desktop-light.png'});
+  await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  await page.evaluate(()=>{const test=(window as any).__test;test.project.id='other-project';for(let i=test.docs.length-1;i>=0;i--)if(test.docs[i].meta.storyCard)test.docs.splice(i,1);document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
+  await expect(page.locator('#documentTitle')).toHaveValue('Manuskript');await page.locator('[data-doc="scene"]').click();
+  await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);await expect(page.locator('#storyList')).toContainText('Keine passenden Karten');
 });

@@ -58,6 +58,38 @@ public static partial class Model
     {
         if (!value.StartsWith("#", StringComparison.Ordinal) && !(Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http" or "mailto")) throw new InvalidDataException("Dieser Linktyp ist nicht erlaubt.");
     }
+    public static bool IsStoryCard(JsonObject meta) => meta["storyCard"] is JsonObject card &&
+        card["type"] is JsonValue value && value.TryGetValue<string>(out var type) && type is "figure" or "place" or "item";
+    public static void ValidateMeta(JsonObject meta, string kind)
+    {
+        if (meta.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Die Metadaten überschreiten 2 MB.");
+        static bool Text(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out _);
+        if (meta.ContainsKey("storyCard"))
+        {
+            if (!IsStoryCard(meta) || kind != "text") throw new InvalidDataException("Ungültiger Kartentyp.");
+            var card = meta["storyCard"]!.AsObject();
+            if (card.Any(p => p.Key is not ("type" or "aliases" or "fields")) || card["aliases"] is not JsonArray aliases ||
+                aliases.Any(n => !Text(n) || string.IsNullOrWhiteSpace(n!.GetValue<string>()) || n.GetValue<string>().Length > 500) ||
+                aliases.Select(n => n!.GetValue<string>()).Distinct(StringComparer.Ordinal).Count() != aliases.Count || card["fields"] is not JsonObject fields)
+                throw new InvalidDataException("Namen oder Felder der Karte sind ungültig.");
+            string[] allowed = card["type"]!.GetValue<string>() switch
+            {
+                "figure" => ["role", "motivation", "conflict", "relationships", "development", "notes"],
+                "place" => ["atmosphere", "features", "significance", "notes"],
+                "item" => ["description", "features", "owner", "origin", "significance", "notes"],
+                _ => throw new InvalidDataException("Ungültiger Kartentyp.")
+            };
+            if (fields.Any(p => !allowed.Contains(p.Key) || !Text(p.Value)) ||
+                (meta.ContainsKey("custom") && (meta["custom"] is not JsonObject custom || custom.Any(p => string.IsNullOrWhiteSpace(p.Key) || p.Key.Length > 500 || !Text(p.Value)))))
+                throw new InvalidDataException("Kartenfelder müssen benannte Textfelder sein.");
+        }
+        if (meta.ContainsKey("storyCardIds"))
+        {
+            if (kind is not ("text" or "script") || IsStoryCard(meta) || meta["storyCardIds"] is not JsonArray ids || ids.Any(n => !Text(n) || n!.GetValue<string>().Length != 32 || !n.GetValue<string>().All(Uri.IsHexDigit)) ||
+                ids.Select(n => n!.GetValue<string>()).Distinct(StringComparer.Ordinal).Count() != ids.Count)
+                throw new InvalidDataException("Ungültige Kartenverweise.");
+        }
+    }
 }
 
 public sealed record DocumentInfo

@@ -7,6 +7,19 @@ namespace Schreibatelier.Core;
 // No HTML or executable raw blocks are accepted at this boundary.
 public static class DocumentCodec
 {
+    public static string WithoutCardLinks(string body, ISet<string> cardIds)
+    {
+        if (cardIds.Count == 0) return body;
+        var root = JsonNode.Parse(body)!;
+        void Walk(JsonNode node)
+        {
+            if (node["marks"] is JsonArray marks)
+                for (var i = marks.Count - 1; i >= 0; i--)
+                    if (marks[i]?["type"]?.GetValue<string>() == "link" && marks[i]?["attrs"]?["href"]?.GetValue<string>() is string href && href.StartsWith('#') && cardIds.Contains(href[1..])) marks.RemoveAt(i);
+            if (node["content"] is JsonArray children) foreach (var child in children) if (child is not null) Walk(child);
+        }
+        Walk(root); return root.ToJsonString();
+    }
     private static JsonObject P(string type, JsonNode? value = null) => value is null ? new() { ["t"] = type } : new() { ["t"] = type, ["c"] = value };
     private static JsonArray Attr(string? style = null) => new("", new JsonArray(), style is null ? new JsonArray() : new JsonArray(new JsonArray("custom-style", style)));
     private static JsonObject Node(string type, JsonArray? content = null, JsonObject? attrs = null) { var n = new JsonObject { ["type"] = type }; if (content is not null) n["content"] = content; if (attrs is not null) n["attrs"] = attrs; return n; }

@@ -1,6 +1,48 @@
-# Validierung – Alpha 3 (0.1.0-alpha.3)
+# Validierung – Alpha 4 (0.1.0-alpha.4)
 
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Alpha-4-Prüfungen, 6. September 2026
+
+Der vollständige Release-Build mit Versionskennung `0.1.0-alpha.4`, TypeScript-Prüfung und Lizenzinventar (71 Komponenten) bestand. Sechs JavaScript-Logiktests, 33 Kartenprüfungen, 83 weitere Speicher-/Konverterprüfungen sowie acht Prüfungen der echten lokalen Sprachprüfung bestanden. Alle 27 Edge-Oberflächentests bestanden im vollständigen Lauf, ohne Fehler, Wiederholungen oder ausgelassene Tests. Protokolle: `artifacts/alpha4-build.log`, `artifacts/alpha4-web-checks.log`, `artifacts/alpha4-core-checks.log`, `artifacts/alpha4-proof-checks.log` und `artifacts/alpha4-ui-checks.json`.
+
+Installer und portables ZIP wurden erstellt; SHA-256, Alpha-Kennung, portabler Modus und das Fehlen von Benutzerdaten im ZIP wurden geprüft. Die Windows-Anwendungssteuerung blockierte anschließend den Start der entpackten `Schreibatelier.exe`. Beim getrennten Installertest blockierte sie den internen Setup-Prozess. Code-Integrity-Ereignisse 3033 und 3077 bestätigen für beide Dateien die nicht erfüllten Signaturanforderungen. Beide Pakete sind nicht signiert. Nativer Programmstart, Neustart/Ordnerumzug sowie Installation und Deinstallation der Alpha-4-Pakete konnten damit auf diesem Rechner nicht abgenommen werden; frühere erfolgreiche native Prüfungen werden nicht als Alpha-4-Ergebnis ausgegeben. Sicherheitsrichtlinien und Vertrauensspeicher blieben unverändert.
+
+Die Paketversuche liegen unter `.work/release-check/97984a850bcd4e42ab9f43579c808aba` und `.work/release-check/6339c66c56334f78a0b08481585783fd`; Protokolle: `artifacts/alpha4-release-checks.log`, `artifacts/alpha4-installer-checks.log` und `artifacts/alpha4-code-integrity.log`. Es entstand keine Testinstallation. Vor dem finalen Packen wurden ausschließlich die Begleitdokumente vervollständigt; Programmdateien und Weboberfläche sind bytegleich mit dem geprüften Build. Die veröffentlichten Prüfsummen beziehen sich auf die abschließend gepackten Dateien.
+
+Die nachstehenden Entwicklungsprüfungen dokumentieren zusätzlich die Entstehung der neuen Karten- und Papierkorbfunktionen. Sie gehören seit Alpha 4 zum veröffentlichten Umfang.
+
+## Figuren und Orte auf testing, 6. September 2026
+
+Die Erweiterung ist noch nicht veröffentlicht. Der lokale, selbstständige Windows-Build liegt unter `artifacts/Schreibatelier-testing/app/Schreibatelier.exe` und trägt die interne Versionskennung `0.1.0-alpha.3+testing.cards`.
+
+- TypeScript-Prüfung und Windows-Build erfolgreich; keine zusätzlichen Abhängigkeiten.
+- Fünf JavaScript-Logiktests bestanden, darunter Unicode-Positionen, alternative und mehrdeutige Namen, längste Treffer sowie Grenzen an Formatierung, Absätzen, Links, Code und eingebetteten Elementen.
+- 23 neue Kartenprüfungen und die 83 bestehenden Speicher-/Konverterprüfungen bestanden. Abgedeckt sind unter anderem Wiederöffnen, Sicherung, Papierkorb, Schreibschutz, validierte Metadaten, Teilen/Zusammenführen und Export ohne Kartenlinks bei unverändertem Original.
+- Alle 21 Edge-Oberflächentests bestanden im abschließenden Gesamtlauf, ohne ausgelassene, fehlgeschlagene oder instabile Tests. Die Kartenfälle prüfen Bearbeitung, eigene Felder, Szenenzuordnungen, Filter, explizite Verweise/Undo, Mehrdeutigkeit, Cursor-/Scroll-Erhalt, Speicherfehler, kombinierte Ansicht und Projektwechsel.
+- Der echte Windows-Editor bestand die Speicherung von Kartenfeldern und Aliasnamen über die Bridge in SQLite, die automatische Markierung und den Erhalt der Szenenzuordnung nach erneutem Projektöffnen. Ein weiterer vollständiger Programmstart lud dieselben Karten, eigenen Felder, Aliasnamen und Zuordnungen erfolgreich. Der abschließende Build wurde ebenfalls nativ geprüft; die lokale Sprachprüfung einschließlich Korrektur/Undo bestand dabei weiterhin.
+
+Protokolle: `artifacts/storycards-ui-checks.json`, `artifacts/storycards-core-checks.log`, `artifacts/storycards-web-checks.log` und `artifacts/storycards-native-final.json`. Ansichten: `artifacts/storycards-desktop-light.png` und `artifacts/storycards-compact-dark.png`. Native Testprojekte liegen isoliert unter `.work/storycards-native/`; vorhandene Benutzerprojekte wurden nicht verwendet. Installer und GitHub-Release wurden für diese Erweiterung nicht erstellt.
+
+Nach der Trennung der linken Kartenlisten von Recherche bestanden vier gezielte Edge-Oberflächentests ohne Fehler oder Wiederholungen (`artifacts/storycards-sidebar-checks.json`). Geprüft wurden vorhandene und neue Karten, Umbenennen, Wiederöffnen, getrennte Rechercheansichten, einklappbare Listen, Tastaturbedienung ohne Editorwechsel, Papierkorb/Wiederherstellung, Schreibschutz und kombinierte Editoren. Die Ansicht wurde in hellem und schmalem dunklem Design kontrolliert (`artifacts/storycards-sidebar-light.png`, `artifacts/storycards-sidebar-dark.png`). TypeScript-Prüfung und vollständiger Windows-Neubuild bestanden mit null Warnungen und Fehlern; die aktualisierte Anwendung liegt wieder im oben genannten Testordner. Für diese reine Oberflächenänderung wurde kein weiterer nativer Integrationslauf ausgeführt.
+
+## Gegenstandskarten auf testing, 6. September 2026
+
+Gegenstände ergänzen Figuren und Orte als dritter Kartentyp. Links gibt es eine eigene Liste; Notizbuch und Vorlagen bieten **Gegenstand anlegen**. Beschreibung, Merkmale, Besitzer/Zugehörigkeit, Herkunft, Bedeutung und Notizen werden mit alternativen Namen und eigenen Feldern im bestehenden Projektformat gespeichert. Erkennung, Szenenzuordnung, Textverweise, Export und Papierkorb verwenden die gemeinsamen Kartenfunktionen.
+
+- Sechs JavaScript-Logiktests bestanden (`artifacts/items-web-checks.log`), einschließlich Gegenstandsnamen, Aliasnamen, Teilwortgrenzen und Mehrdeutigkeit zwischen Kartentypen.
+- 33 Kartenprüfungen und 83 bestehende Core-/Konverterprüfungen bestanden (`artifacts/items-core-checks.log`). Neu geprüft sind Gegenstandsfelder, ungültige Felder, Teilen/Zusammenführen mit Gegenstandszuordnungen, Export, Papierkorb und erneutes Öffnen der SQLite-Projektdatei.
+- Vier gezielte Edge-Oberflächentests bestanden ohne Fehler, Wiederholungen oder ausgelassene Tests (`artifacts/items-ui-checks.json`). Sie prüfen Anlegen über Seitenleiste, Notizbuch und Vorlagen, alle Gegenstandsfelder, eigene Felder, Aliasnamen, zwei Szenenzuordnungen, Namenserkennung ohne Editorwechsel, Wiederöffnen, Papierkorb, Speicherfehler und Schreibschutz sowie die bestehenden Figuren-/Ortsabläufe.
+- TypeScript-Prüfung und vollständiger Windows-Neubuild bestanden mit null Warnungen und Fehlern. Die Testversion liegt unter `artifacts/Schreibatelier-testing/app/Schreibatelier.exe`; der Projektstarter verwendet diese EXE. Helle und schmale dunkle Ansicht wurden visuell geprüft (`artifacts/items-light.png`, `artifacts/items-dark.png`). Kein zusätzlicher nativer WebView2-Durchlauf oder GitHub-Release für diese Ergänzung.
+
+## Papierkorb per Rechtsklick auf testing, 6. September 2026
+
+Das Kontextmenü verwendet die vorhandene Papierkorboperation für Abschnitte, Ordner mit Untereinträgen, Recherchetexte/-dateien sowie Figuren und Orte. Rechtsklick und Umschalt+F10 beziehen sich auf den angeklickten Eintrag. Vor dem Verschieben wird der Speicherpuffer geleert; bei Speicherfehlern wird nichts verschoben. Projektbereiche und schreibgeschützte Projekte bleiben geschützt. Wiederherstellen aktualisiert die Papierkorbliste und die Kartenansicht unmittelbar.
+
+- Fünf gezielte Edge-Oberflächentests bestanden (`artifacts/context-trash-ui-checks.json`). Die drei neuen Kontextmenüfälle bestanden auch auf dem abschließenden Stand ohne Fehler, Wiederholungen oder ausgelassene Tests (`artifacts/context-trash-ui-final.json`). Geprüft: richtiges Ziel ohne Szenenwechsel, Abbrechen/Escape, Tastatur, Ordner samt Untereinträgen, Pinnwand, Figuren-/Ortsfelder und Szenenzuordnungen nach Wiederherstellung, Rechercheanhänge, Speicherfehler, Schreibschutz und Projektwechsel.
+- Alle 23 Kartenprüfungen und 83 vorhandenen Core-/Konverterprüfungen bestanden, einschließlich echter SQLite-Papierkorboperationen und Wiederherstellung von Untereinträgen (`artifacts/context-trash-core-checks.log`).
+- TypeScript-Prüfung, vollständiger Windows-Neubuild und Veröffentlichung im lokalen Testordner erfolgreich, null Warnungen und Fehler. Die drei ausgelieferten Webdateien stimmen per SHA-256 mit dem geprüften Build überein. Der Projektstarter verweist auf `artifacts/Schreibatelier-testing/app/Schreibatelier.exe`.
+- Helles und schmales dunkles Design visuell geprüft (`artifacts/context-trash-light.png`, `artifacts/context-trash-dark.png`). Das Kontextmenü wurde in Edge geprüft; ein zusätzlicher nativer WebView2-Durchlauf wurde für diese Änderung nicht ausgeführt.
 
 ## Alpha-3-Prüfungen, 6. September 2026
 

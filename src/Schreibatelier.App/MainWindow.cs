@@ -32,7 +32,7 @@ public sealed class MainWindow : Window
     private const string Assets = "https://assets.schreibatelier.local/";
     private bool integrationTest;
     private bool fileOperation;
-    private const string AppTitle = "Schreibatelier – Alpha 3";
+    private const string AppTitle = "Schreibatelier – Alpha 4";
     private string BackupRoot => Path.Combine(dataDirectory, "Backups");
 
     public MainWindow(string[] args)
@@ -96,7 +96,7 @@ public sealed class MainWindow : Window
             core.DownloadStarting += (_, e) => e.Cancel = true;
             var file = arguments.FirstOrDefault(x => x.EndsWith(".schreibprojekt", StringComparison.OrdinalIgnoreCase));
             if (file is not null) Switch(integrationTest && !File.Exists(file)
-                ? ProjectStore.Create(file, "Alpha-3-Paketprüfung", BackupRoot)
+                ? ProjectStore.Create(file, "Alpha-4-Paketprüfung", BackupRoot)
                 : new ProjectStore(file, BackupRoot));
             web.Source = new Uri(Origin + "index.html");
         }
@@ -296,7 +296,7 @@ public sealed class MainWindow : Window
                 File.WriteAllText(Path.Combine(dataDirectory, "result.json"), a.ToJsonString()); allowClose = true; _ = Dispatcher.BeginInvoke(Close); return null;
             case "integrationCapture":
                 if (!integrationTest) throw new InvalidOperationException("Testbefehl ist deaktiviert.");
-                var phase = Str(a, "phase"); if (phase is not ("editor" or "pdf" or "html" or "proof" or "proof-premium" or "proof-chatgpt")) throw new InvalidDataException();
+                var phase = Str(a, "phase"); if (phase is not ("editor" or "pdf" or "html" or "proof" or "proof-premium" or "proof-chatgpt" or "cards")) throw new InvalidDataException();
                 using (var capture = File.Create(Path.Combine(dataDirectory, phase + ".png"))) await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, capture);
                 return true;
             default: throw new InvalidDataException("Unbekannter Befehl: " + action);

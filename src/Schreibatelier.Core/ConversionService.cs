@@ -41,6 +41,8 @@ public sealed class ConversionService(string? toolsRoot = null)
         var supported = TextFormats.Concat(["pdf", "epub", "latex"]).ToArray(); if (!supported.Contains(options.Format)) throw new InvalidDataException("Unbekanntes Exportformat.");
         if (options.FontSize is < 8 or > 48 || options.Paper is not ("a4" or "a5" or "letter")) throw new InvalidDataException("Ungültige Seiteneinstellungen.");
         var docs = options.DocumentIds.Distinct().Select(store.GetDocument).Where(d => !d.Deleted && d.Kind != "asset").ToArray();
+        var cardIds = store.GetProject().Documents.Where(d => Model.IsStoryCard(d.Meta)).Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var document in docs) document.Body = DocumentCodec.WithoutCardLinks(document.Body!, cardIds);
         if (docs.Length == 0) throw new InvalidDataException("Bitte mindestens einen Textabschnitt auswählen.");
         var work = Work(); var warnings = new List<string>(); var assetsFolder = "Schreibatelier-assets-" + Model.Id();
         try

@@ -1,21 +1,21 @@
-# Schreibatelier – Alpha 3
+# Schreibatelier – Alpha 4
 
-Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 3 (`0.1.0-alpha.3`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
+Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 4 (`0.1.0-alpha.4`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
 
-## Alpha 3 herunterladen und starten
+## Alpha 4 herunterladen und starten
 
-**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Schreibatelier-Releases/releases/tag/v0.1.0-alpha.3) sind als Vorabversion gekennzeichnet und ohne Anmeldung erreichbar. Der Quellcode bleibt privat.
+**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Schreibatelier-Releases/releases/tag/v0.1.0-alpha.4) sind als Vorabversion gekennzeichnet und ohne Anmeldung erreichbar. Der Quellcode bleibt privat.
 
 | Download | Verwendung |
 | --- | --- |
-| [Windows-Installer](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.3/Schreibatelier-0.1.0-alpha.3-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
-| [Portables ZIP](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.3/Schreibatelier-0.1.0-alpha.3-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
+| [Windows-Installer](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.4/Schreibatelier-0.1.0-alpha.4-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
+| [Portables ZIP](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.4/Schreibatelier-0.1.0-alpha.4-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
 
 Im portablen Modus liegen Einstellungen, automatische Sicherungen, Vorschauen und WebView-Daten unter `Data` neben der EXE. Zum Umziehen den gesamten Ordner bei geschlossener Anwendung kopieren. Manuskripte bleiben an dem Ort, den du beim Speichern auswählst; außerhalb abgelegte Projekte müssen separat mitgenommen werden. Temporäre Konverterdateien verwenden weiterhin den Windows-Temp-Ordner.
 
-Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 3](docs/RELEASE-ALPHA-3.md).
+Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 4](docs/RELEASE-ALPHA-4.md).
 
-Beim Alpha-3-Pakettest blockierte die Windows-Anwendungssteuerung den Installer. Die portable Version bestand die nativen Start-, Speicher- und Umzugsprüfungen; Installation und Deinstallation der Alpha 3 sind auf dem Prüfrechner noch nicht bestätigt.
+Auf dem Prüfrechner blockierte die Windows-Anwendungssteuerung den portablen Programmstart und den internen Installerprozess wegen der Signaturanforderungen. Nativer Start, Installation und Deinstallation der Alpha-4-Pakete sind dort deshalb noch nicht bestätigt. Die Prüfungen und bekannten Grenzen stehen in [Validierung](docs/VALIDIERUNG.md).
 
 ## Updates über GitHub
 
@@ -25,13 +25,13 @@ Eine neue Versionsnummer muss als GitHub **Release** mit passenden Windows-Datei
 
 Bei der installierten Variante speichert und sichert **Speichern und Installer starten** das offene Projekt, startet den vorhandenen Windows-Installer und schließt Schreibatelier. Bei einem Speicherfehler bleibt die Anwendung offen. Bei der portablen Variante **Downloadordner öffnen**, die Anwendung schließen und das ZIP in den bisherigen Programmordner entpacken; Programmdateien ersetzen und `Data` sowie eigene Projekte beibehalten. Bei einem neuen Zielordner den bisherigen `Data`-Ordner bei geschlossener Anwendung mitkopieren. Der portable Austausch erfolgt manuell.
 
-Für künftige Veröffentlichungen zuerst eine höhere Versionsnummer in Anwendung und Paketierung setzen, die Pakete prüfen und das Quellrelease veröffentlichen. Danach `./scripts/publish-updates.ps1 -Version '0.1.0-alpha.3'` mit der tatsächlich veröffentlichten Version ausführen. Das Skript überträgt ausschließlich Installer, ZIP und Prüfsummen aus dem bestehenden Quellrelease; kein Quellcode wird veröffentlicht. Bereits veröffentlichte Dateien werden nicht überschrieben. Die veröffentlichten Alpha-1-/Alpha-2-Pakete enthalten noch keine Updatefunktion. Einmalig Alpha 3 manuell installieren bzw. entpacken; spätere Releases werden in der Anwendung angeboten.
+Für künftige Veröffentlichungen zuerst eine höhere Versionsnummer in Anwendung und Paketierung setzen, die Pakete prüfen und das Quellrelease veröffentlichen. Danach `./scripts/publish-updates.ps1 -Version '0.1.0-alpha.4'` mit der tatsächlich veröffentlichten Version ausführen. Das Skript überträgt ausschließlich Installer, ZIP und Prüfsummen aus dem bestehenden Quellrelease; kein Quellcode wird veröffentlicht. Bereits veröffentlichte Dateien werden nicht überschrieben. Alpha 3 kann Alpha 4 über die Updatefunktion beziehen. Die Alpha-1-/Alpha-2-Pakete benötigen einmalig den manuellen Download.
 
 ## Aus dem Quellprojekt starten
 
 **Im Projektordner einfach „Schreibatelier starten“ doppelklicken.** Die Windows-Verknüpfung öffnet die fertige Anwendung. Jeder Release-Build erstellt bzw. aktualisiert sie automatisch; nach dem Verschieben des Quellprojektordners lässt sie sich mit `scripts/create-shortcut.ps1` neu erzeugen.
 
-Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.3/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.3/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
+Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.4/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.4/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
 
 Über **Datei → Neues Projekt** eine `.schreibprojekt`-Datei anlegen. Darin werden Text, Projektstruktur, Rechercheanhänge und Textstände gespeichert. Eine vorhandene Datei wird beim Anlegen eines Projekts niemals überschrieben.
 
@@ -47,10 +47,14 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 
 ## Benutzen
 
+**Neu in Alpha 4:** [Figuren-, Orts- und Gegenstandskarten mit automatischer Namenserkennung](docs/FIGUREN-UND-ORTE.md). Die Karten gehören zu den oben verlinkten Alpha-4-Paketen.
+
+Ein **Rechtsklick auf einen Eintrag → In den Papierkorb verschieben** öffnet das Löschmenü für Abschnitte, Ordner, Recherchedateien, Figuren, Orte und Gegenstände. Alternativ den Eintrag mit der Tastatur fokussieren und **Umschalt+F10** drücken. Nach der Bestätigung verschwindet der Eintrag aus der Liste; unter **Papierkorb → Wiederherstellen** kommt er zurück. Ordner umfassen ihre Untereinträge. Die festen Projektbereiche bleiben erhalten; schreibgeschützte Projekte lassen keine Änderungen zu.
+
 - Links Kapitel, Texte und Recherche anlegen. Ziehen verschiebt einen Abschnitt; das Abschnittsmenü bietet dieselbe Aktion mit Ziel- und Positionsauswahl. Pinnwand und Gliederung zeigen die Unterabschnitte der Auswahl. Karten per Doppelklick oder Eingabetaste öffnen.
 - In der Mitte schreiben. Die Werkzeugleiste unterstützt Absatzarten, Listen, Tabellen, Bilder, Links, Formatierung, Kommentare und Fußnoten. Weitere Schriftwerkzeuge und interne Verweise stehen unter `•••` in der Werkzeugleiste. Mit **Mit Unterabschnitten** zusammenhängend arbeiten; längere Projekte laden weitere Abschnitte auf Anforderung.
 - Rechts Zusammenfassungen, Status, Farbe, Schlagwörter, Wortziele, eigene Felder und Notizen führen. Die linke Notizbuchkante ziehen, um die Breite anzupassen; mit Tab ausgewählt funktionieren auch die Pfeiltasten. Die Breite wird lokal gespeichert. Unter **Stände** Fassungen sichern, vergleichen und wiederherstellen. Anmerkungen über die Liste oder Doppelklick im Text bearbeiten.
-- **Vorlagen** enthält eigene Ausgangstexte für Figuren, Orte, Szenen, Drehbücher und Recherche. Über das Abschnittsmenü lassen sich zusätzlich eigene Textvorlagen im Projekt speichern.
+- **Vorlagen** öffnet die Kartenerstellung für Figuren, Orte und Gegenstände oder Ausgangstexte für Szenen, Drehbücher und Recherche. Über das Abschnittsmenü lassen sich zusätzlich eigene Textvorlagen im Projekt speichern. Bestehende Vorlagentexte bleiben erhalten.
 - Sammlungen wählen Abschnitte manuell oder anhand von Titel/Metadaten. Verwaltung und Hinzufügen stehen im Abschnittsmenü.
 - **Strg+S** speichert sofort. **F11** schaltet den Fokusmodus um, **Escape** beendet ihn. **Zweite Ansicht** öffnet einen Abschnitt oder Anhang zum Nachschlagen. Im schmalen Fenster öffnet **Notizbuch** den Inspektor.
 - Projektsuche links; **Suchen** in der Werkzeugleiste markiert oder ersetzt Text, auch über unterschiedliche Textformatierung hinweg. Projektweite Ersetzungen legen vorher Textstände an und werden gemeinsam gespeichert.

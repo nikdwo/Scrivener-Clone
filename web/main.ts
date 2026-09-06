@@ -12,6 +12,8 @@ import { diffWords } from 'diff';
 import { EditorState } from '@tiptap/pm/state';
 import { Proofreading } from './proofreading';
 import { Updates } from './updates';
+import { StoryCards } from './storycards';
+import { isStoryCard } from './storycards.mjs';
 import { escapeHtml as h, orderedDocuments, plainText, wordCount, matchesCollection } from './logic.mjs';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -39,6 +41,8 @@ const cache = new Map<string,any>(), dirty = new Map<string,number>(), collapsed
 const emptyBody = JSON.stringify({type:'doc',content:[{type:'paragraph'}]});
 const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,saveSettings:saveProjectSettings,modal});
 const updates=new Updates(rpc,flush,async enabled=>{const previous=preferences.checkUpdatesAtStartup;preferences.checkUpdatesAtStartup=enabled;try{await rpc('preferences',preferences)}catch(e){preferences.checkUpdatesAtStartup=previous;throw e}});
+const storyCards=new StoryCards({rpc,project:()=>project,scene:current,editor:()=>active,getDoc,changed,flush,refresh,modal,select,trash:trashDocument,saveSettings:saveProjectSettings,
+  show:()=>{inspector='cards';document.body.classList.add('inspector-visible');renderInspector()},error:message=>toast(message,true)});
 
 function toast(text: string, error = false) { $('toast').textContent=text; $('toast').classList.remove('hidden'); $('toast').classList.toggle('error',error); if (!error) setTimeout(()=>{$('toast').classList.add('hidden')},5000); }
 function state(text: string, error = false) { $('saveState').textContent=text; $('saveState').classList.toggle('error',error); }
@@ -95,6 +99,7 @@ function setDocument(d:any) { const live=cache.get(d.id);if(live&&live!==d)Objec
 function changed(d:any) {
   if(project.readOnly) return;
   d.words=wordCount(plainText(d.body ?? emptyBody)); setDocument(d); dirty.set(d.id,++serial);
+  if(isStoryCard(d))storyCards.invalidate();
   state('Ungespeicherte Änderungen'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>flush().catch(()=>{}),1000); updateStats();
 }
 async function flush():Promise<void> {
@@ -114,33 +119,44 @@ async function flush():Promise<void> {
 }
 setInterval(()=>{ if(dirty.size) void flush().catch(()=>{}); },5000);
 async function getDoc(id:string) { if(!cache.has(id)) { const owner=project; const d=await rpc('document',{id});if(owner!==project)throw new Error('Das Projekt hat sich während des Ladens geändert.');cache.set(id,d); } return cache.get(id); }
-async function refresh(next?:any) { await flush(); project=next ?? await rpc('state'); for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); }
+async function refresh(next?:any) { await flush(); project=next ?? await rpc('state'); for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); storyCards.invalidate(); }
 function renderRecentProjects(entries:{title:string,filePath:string}[]=[]) {
   $('recentProjects').innerHTML=entries.slice(0,3).map(p=>`<li><button type="button" data-recent-project="${h(p.filePath)}" title="${h(p.filePath)}"><span>${h(p.title||p.filePath.split(/[\\/]/).pop())}</span><small>${h(p.filePath)}</small></button></li>`).join('');
   $('recentProjectsEmpty').classList.toggle('hidden',entries.length>0);
 }
-async function adopt(next:any) { if(!next) return; destroyEditors(); project=next; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
+async function adopt(next:any) { if(!next) return; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); project=next; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
 
 function renderTree() {
   if(!project) return;
-  const children=new Map<string,any[]>(); for(const d of project.documents) if(!d.deleted) { const key=d.parentId ?? ''; const list=children.get(key) ?? []; list.push(d); children.set(key,list); }
+  const children=new Map<string,any[]>(); for(const d of project.documents) if(!d.deleted) { const key=isStoryCard(d)?'story-'+d.meta.storyCard.type:d.parentId ?? ''; const list=children.get(key) ?? []; list.push(d); children.set(key,list); }
   let html='';
   function render(parent:string,depth:number) { for(const d of (children.get(parent) ?? []).sort((a,b)=>a.position-b.position)) { const root=!d.parentId, has=(children.get(d.id)?.length ?? 0)>0;
-    html+=`<div class="tree-row ${d.id===selected?'selected':''} ${root?'root':''}" data-doc="${h(d.id)}" draggable="${!root&&!project.readOnly}" tabindex="0" role="button" aria-label="${h(d.title)}" style="padding-left:${depth*14+3}px"><button class="tree-toggle" data-collapse="${h(d.id)}" aria-label="${collapsed.has(d.id)?'Aufklappen':'Zuklappen'}">${has?(collapsed.has(d.id)?'▸':'▾'):''}</button><span class="row-icon">${d.kind==='folder'?'▱':d.kind==='asset'?'◇':'≡'}</span><span class="row-label">${h(d.title)}</span>${d.words?`<span class="tree-words">${d.words}</span>`:''}</div>`;
+    if(root)html+=`<section data-tree-root="${h(d.id)}" aria-label="${h(d.title)}">`;
+    html+=`<div class="tree-row ${d.id===selected?'selected':''} ${root?'root':''}" data-doc="${h(d.id)}" draggable="${!root&&!isStoryCard(d)&&!project.readOnly}" tabindex="0" role="button" aria-label="${h(d.title)}" style="padding-left:${depth*14+3}px"><button class="tree-toggle" data-collapse="${h(d.id)}" aria-label="${collapsed.has(d.id)?'Aufklappen':'Zuklappen'}">${has?(collapsed.has(d.id)?'▸':'▾'):''}</button><span class="row-icon">${d.kind==='folder'?'▱':d.kind==='asset'?'◇':'≡'}</span><span class="row-label">${h(d.title)}</span>${d.words?`<span class="tree-words">${d.words}</span>`:''}</div>`;
     if(!collapsed.has(d.id)) render(d.id,depth+1);
-  }} render('',0); $('tree').innerHTML=html;
+    if(root)html+='</section>';
+  }} render('',0);
+  html+='<section class="tree-story-cards" aria-label="Figuren, Orte & Gegenstände"><h3>Figuren, Orte &amp; Gegenstände</h3>';
+  for(const [type,title,create,action] of [['figure','Figuren','Figur anlegen','newStoryFigure'],['place','Orte','Ort anlegen','newStoryPlace'],['item','Gegenstände','Gegenstand anlegen','newStoryItem']]) {
+    const id='story-'+type, count=children.get(id)?.length??0;
+    html+=`<details data-story-group="${id}" ${collapsed.has(id)?'':'open'}><summary>${title} <span class="tree-words">${count}</span></summary>`;
+    render(id,1);
+    html+=`<button class="tree-create-card" data-action="${action}" ${project.readOnly?'disabled':''}>＋ ${create}</button></details>`;
+  }
+  $('tree').innerHTML=html+'</section>';
   $('trashCount').textContent=String(project.documents.filter((d:any)=>d.deleted).length);
 }
+$('tree').addEventListener('toggle',event=>{const group=event.target as HTMLDetailsElement,id=group.dataset.storyGroup;if(id)group.open?collapsed.delete(id):collapsed.add(id)},true);
 function renderCollections() { $('collectionList').innerHTML=(project?.settings.collections ?? []).map((c:any,i:number)=>`<button class="collection-item ${collection===c?'active':''}" data-collection="${i}">◌ ${h(c.title)}</button>`).join(''); }
 function destroyEditors() { proofreading.reset();editors.forEach(e=>e.destroy()); editors=[]; active=null; }
-function extensions() {
+function extensions(documentId:string) {
   const Footnote=Node.create({name:'footnote',group:'inline',inline:true,atom:true,addAttributes(){return{id:{default:null},text:{default:''}}},parseHTML(){return[{tag:'span[data-footnote]'}]},renderHTML({HTMLAttributes}){return['span',mergeAttributes(HTMLAttributes,{'data-footnote':HTMLAttributes.id,'data-note':HTMLAttributes.text,class:'footnote',title:HTMLAttributes.text,contenteditable:'false'}),'']}});
   const Comment=Mark.create({name:'comment',inclusive:false,addAttributes(){return{id:{default:null},text:{default:''}}},parseHTML(){return[{tag:'span[data-comment]'}]},renderHTML({HTMLAttributes}){return['span',mergeAttributes(HTMLAttributes,{'data-comment':HTMLAttributes.id,'data-note':HTMLAttributes.text,class:'comment',title:HTMLAttributes.text}),0]}});
   const Script=Node.create({name:'script',group:'block',content:'inline*',addAttributes(){return{element:{default:'action'}}},parseHTML(){return[{tag:'p[data-element]'}]},renderHTML({HTMLAttributes}){return['p',{'data-element':HTMLAttributes.element},0]}});
-  return [StarterKit.configure({link:{openOnClick:false,autolink:false}}),Image.configure({allowBase64:false}),TableKit.configure({table:{resizable:true}}),Highlight.configure({multicolor:true}),TextStyleKit,TextAlign.configure({types:['heading','paragraph']}),Subscript,Superscript,Footnote,Comment,Script,proofreading.extension];
+  return [StarterKit.configure({link:{openOnClick:false,autolink:false}}),Image.configure({allowBase64:false}),TableKit.configure({table:{resizable:true}}),Highlight.configure({multicolor:true}),TextStyleKit,TextAlign.configure({types:['heading','paragraph']}),Subscript,Superscript,Footnote,Comment,Script,proofreading.extension,storyCards.extension(documentId)];
 }
 function makeEditor(element:HTMLElement,d:any,editable=true) {
-  const editor=new Editor({element,extensions:extensions(),content:JSON.parse(d.body ?? emptyBody),editable:editable&&!project.readOnly,
+  const editor=new Editor({element,extensions:extensions(d.id),content:JSON.parse(d.body ?? emptyBody),editable:editable&&!project.readOnly,
     editorProps:{attributes:{'aria-label':`Text: ${d.title}`,spellcheck:'true',lang:project.settings.proofLanguage??'de-DE'},transformPastedHTML:html=>DOMPurify.sanitize(html,{FORBID_TAGS:['img','iframe','script','style','object','embed'],FORBID_ATTR:['style','onerror','onclick']}),
       handleDOMEvents:{drop:(_view,event)=>{if((event as DragEvent).dataTransfer?.files.length){event.preventDefault();toast('Bilder bitte über „Bild“ importieren.');return true}return false}}},
     onUpdate:({editor})=>{d.body=JSON.stringify(editor.getJSON());changed(d);proofreading.changed(editor)},
@@ -150,12 +166,13 @@ function makeEditor(element:HTMLElement,d:any,editable=true) {
   return editor;
 }
 async function select(id:string) {
+  if(isStoryCard(info(id))&&!info(id).deleted){await storyCards.open(id);return}
   const request=++selectionRequest;await flush();const d=await getDoc(id);if(request!==selectionRequest)return;selected=id;collection=null;if(view==='trash')view='write';renderTree();
   $<HTMLInputElement>('documentTitle').value=d.title; $<HTMLInputElement>('documentTitle').disabled=project.readOnly||d.deleted;
   const ancestry=[]; let p=info(id); while(p){ancestry.unshift(p.title);p=info(p.parentId)} $('breadcrumb').textContent=ancestry.join(' / ');
   $('documentStatus').textContent=d.meta.status ?? 'Entwurf'; await renderView(); renderInspector(); updateStats();
 }
-function displayDocs() { if(collection) return project.documents.filter((d:any)=>!d.deleted&&matchesCollection(d,collection)); return orderedDocuments(project.documents,selected,false); }
+function displayDocs() { if(collection) return project.documents.filter((d:any)=>!d.deleted&&matchesCollection(d,collection)); return orderedDocuments(project.documents.filter((d:any)=>!isStoryCard(d)),selected,false); }
 async function renderView() {
   const request=++renderRequest;
   destroyEditors(); const pane=$('editorPane'); pane.innerHTML='';
@@ -167,7 +184,7 @@ async function renderView() {
   if(view==='outline') { renderOutline(); return; }
   if(d.kind==='asset') { renderAsset(pane,d); return; }
   const sheet=document.createElement('div'); sheet.className='editor-sheet'; pane.append(sheet);
-  const list=combined ? orderedDocuments(project.documents,selected,true).filter((d:any)=>d.kind!=='asset') : [d];
+  const list=combined ? orderedDocuments(project.documents.filter((d:any)=>!isStoryCard(d)),selected,true).filter((d:any)=>d.kind!=='asset') : [d];
   // Only requested sections are materialized, not the entire project.
   for(const item of list.slice(0,combinedLimit)) {
     const doc=await getDoc(item.id);if(request!==renderRequest)return; if(combined){const label=document.createElement('div');label.className='section-label';label.textContent=doc.title;sheet.append(label)}
@@ -207,7 +224,8 @@ function renderInspector() {
   const d=current();if(!d)return;
   document.querySelectorAll<HTMLElement>('[data-inspector]').forEach(el=>el.classList.toggle('active',el.dataset.inspector===inspector));
   const target=$('inspectorContent');
-  target.classList.toggle('hidden',inspector==='proof');$('proofPanel').classList.toggle('hidden',inspector!=='proof');
+  target.classList.toggle('hidden',inspector==='proof'||inspector==='cards');$('proofPanel').classList.toggle('hidden',inspector!=='proof');$('storyCardsPanel').classList.toggle('hidden',inspector!=='cards');
+  if(inspector==='cards'){storyCards.show();return}
   if(inspector==='proof'){proofreading.show();return}
   if(inspector==='details') {
     target.innerHTML=area('Zusammenfassung','metaSynopsis',d.meta.synopsis)+`<div class="field-row"><div class="field"><label for="metaStatus">Status</label><select id="metaStatus">${['Idee','Entwurf','Überarbeitung','Fertig'].map(x=>`<option ${x===(d.meta.status||'Entwurf')?'selected':''}>${x}</option>`).join('')}</select></div>${field('Farbe','metaColor',d.meta.color||'#b77d4e','color')}</div>`+field('Schlagwörter','metaTags',d.meta.tags)+field('Wortziel','metaTarget',d.meta.target||'','number')+`<div class="field"><label>Eigene Metadaten</label><div id="customMeta">${Object.entries(d.meta.custom??{}).map(([k,v])=>`<div class="muted"><b>${h(k)}:</b> ${h(v)}</div>`).join('')}</div><button data-action="customMeta">Feld bearbeiten</button></div><div class="meta-stats"><div><small>Wörter</small><strong>${d.words}</strong></div><div><small>Zeichen</small><strong>${[...plainText(d.body??emptyBody)].length}</strong></div></div>`;
@@ -236,7 +254,29 @@ async function addDocument(kind='text',template?:string) {
   const d=await rpc('create',{parent:parentForNew(),title:name,kind,body});await refresh();setDocument(d);view='write';await select(d.id);
 }
 async function moveDocument(id:string,parent:string,index:number) {await requireWrite();await refresh(await rpc('move',{id,parent,index}));await renderView()}
-async function saveProjectSettings() {await refresh(await rpc('settings',{title:project.title,settings:project.settings}))}
+async function trashDocument(id:string,owner=project?.id) {
+  await requireWrite();
+  if(project.id!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');
+  const d=info(id);if(!d||d.deleted)throw new Error('Der Eintrag ist nicht mehr verfügbar.');
+  if(!d.parentId)throw new Error('Die festen Projektbereiche bleiben erhalten.');
+  const affected=orderedDocuments(project.documents,id,true);
+  if(!await modal('In den Papierkorb verschieben?',`<p>„${h(d.title)}“${affected.length>1?' und die '+(affected.length-1)+' Untereinträge bleiben':' bleibt'} im Papierkorb wiederherstellbar.</p>${isStoryCard(d)?'<p>Szenenzuordnungen bleiben erhalten.</p>':''}`,'In den Papierkorb'))return;
+  if(project.id!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');
+  await requireWrite();if(project.id!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');await refresh(await rpc('trash',{id,deleted:true}));
+  if(referenceId&&info(referenceId)?.deleted){referenceId=null;await renderReference()}
+  if(info(selected)?.deleted){
+    let parent=d.parentId;while(info(parent)?.deleted||isStoryCard(info(parent)))parent=info(parent).parentId??'manuscript';
+    await select(parent);
+  }else if(view==='trash')await actions.showTrash();
+  else if(view==='board'||view==='outline'||collection||(combined&&affected.some((d:any)=>!isStoryCard(d))))await renderView();
+  renderInspector();toast(`„${d.title}“ wurde in den Papierkorb verschoben.`);
+}
+async function restoreDocument(id:string) {
+  await requireWrite();await refresh(await rpc('trash',{id,deleted:false}));
+  if(view==='trash'){await actions.showTrash();renderInspector()}else await select(id);
+  toast('Eintrag wiederhergestellt.');
+}
+async function saveProjectSettings() {await flush();await refresh(await rpc('settings',{title:project.title,settings:project.settings}))}
 function updateFormatButtons() {document.querySelectorAll<HTMLElement>('[data-format]').forEach(b=>b.classList.toggle('active',!!active?.isActive(b.dataset.format!)))}
 async function setView(next:string) {await flush();view=next;await renderView()}
 
@@ -288,19 +328,20 @@ const actions:Record<string,()=>any>={
   insertFootnote:async()=>{if(!active)return;const ed=active;const text=await textPrompt('Fußnote einfügen','Text der Fußnote','',true);if(text?.trim())ed.chain().focus().insertContent({type:'footnote',attrs:{id:crypto.randomUUID(),text}}).run()},
   insertComment:async()=>{if(!active)return;const ed=active;if(ed.state.selection.empty)throw new Error('Bitte zuerst die Textstelle markieren.');const text=await textPrompt('Kommentar','Deine Anmerkung','',true);if(text?.trim()){ed.chain().focus().setMark('comment',{id:crypto.randomUUID(),text}).run();inspector='notes';renderInspector()}},
   snapshot:async()=>{await requireWrite();const title=await textPrompt('Textstand sichern','Bezeichnung','Vor Überarbeitung');if(title){await rpc('snapshot',{id:selected,title});inspector='snapshots';renderInspector();toast('Textstand gesichert.')}},
-  restoreDocument:async()=>{await requireWrite();await refresh(await rpc('trash',{id:selected,deleted:false}));await select(selected)},
-  showTrash:async()=>{await flush();destroyEditors();view='trash';$('formatbar').classList.add('hidden');const docs=project.documents.filter((d:any)=>d.deleted);$('editorPane').innerHTML=`<h2>Papierkorb</h2><p class="muted">Texte werden nicht endgültig gelöscht. Übergeordnete Ordner zuerst wiederherstellen.</p>${docs.map((d:any)=>`<div class="search-result"><h3>${h(d.title)}</h3><button data-restore-doc="${h(d.id)}">Wiederherstellen</button></div>`).join('')||'<p class="muted">Der Papierkorb ist leer.</p>'}`},
+  restoreDocument:()=>restoreDocument(selected),
+  showTrash:async()=>{await flush();destroyEditors();view='trash';$('formatbar').classList.add('hidden');const docs=project.documents.filter((d:any)=>d.deleted);$('editorPane').innerHTML=`<h2>Papierkorb</h2><p class="muted">Texte werden nicht endgültig gelöscht. Übergeordnete Ordner zuerst wiederherstellen.</p>${docs.map((d:any)=>`<div class="search-result"><h3>${h(d.title)}</h3><button data-restore-doc="${h(d.id)}" ${project.readOnly?'disabled':''}>Wiederherstellen</button></div>`).join('')||'<p class="muted">Der Papierkorb ist leer.</p>'}`},
   export:()=>output(),preview:()=>output(true),
   goals:async()=>{await requireWrite();const form=await modal('Dein Schreibziel',field('Manuskript – Wörter','target',project.settings.wordTarget??80000,'number')+field('Sitzung – Wörter','session',project.settings.sessionTarget??500,'number'));if(form){project.settings.wordTarget=Math.max(0,Number(form.get('target')));project.settings.sessionTarget=Math.max(0,Number(form.get('session')));await saveProjectSettings();updateStats()}},
   history:async()=>{const history=await rpc('history');await modal('Dein Schreibverlauf',`<p class="muted">Nettoänderung der Wortzahl pro Tag, einschließlich Löschungen.</p><table class="outline-table"><thead><tr><th>Tag</th><th>Wörter</th></tr></thead><tbody>${history.map((d:any)=>`<tr><td>${h(d.day)}</td><td>${d.words>0?'+':''}${d.words}</td></tr>`).join('')}</tbody></table>`,'Schließen')},
   toggleFreeBoard:async()=>{await requireWrite();project.settings.freeBoard=!project.settings.freeBoard;await saveProjectSettings();renderBoard()},
   newCollection:async()=>{await requireWrite();const form=await modal('Sammlung anlegen',field('Name','title','Meine Sammlung')+field('Suchbegriff in Titel oder Metadaten','query')+`<label class="form-check"><input type="checkbox" name="manual"> Nur den aktuellen Abschnitt aufnehmen</label>`);if(form){const c:any={title:String(form.get('title')),query:String(form.get('query'))};if(form.has('manual'))c.ids=[selected];project.settings.collections=[...(project.settings.collections??[]),c];await saveProjectSettings()}},
   customMeta:async()=>{await requireWrite();const form=await modal('Eigenes Metadatenfeld',field('Feldname','key')+field('Wert (leer zum Entfernen)','value'));if(form){const key=String(form.get('key')).trim(),value=String(form.get('value'));if(!key||['__proto__','constructor','prototype'].includes(key))throw new Error('Bitte einen gültigen Feldnamen eingeben.');const d=current();d.meta.custom??={};if(value)d.meta.custom[key]=value;else delete d.meta.custom[key];changed(d);renderInspector()}},
-  templates:async()=>{const form=await modal('Aus einer Vorlage beginnen',`<div class="field"><label for="template">Vorlage</label><select name="template" id="template"><option value="figure">Figur</option><option value="place">Ort</option><option value="scene">Szene</option><option value="script">Drehbuch</option><option value="research">Recherche-Notiz</option>${(project.settings.templates??[]).map((t:any,i:number)=>`<option value="custom-${i}">${h(t.title)} (eigene Vorlage)</option>`).join('')}</select></div>`,'Abschnitt anlegen');if(!form)return;const k=String(form.get('template'));if(k.startsWith('custom-')){await requireWrite();const t=project.settings.templates[Number(k.slice(7))];const name=await textPrompt('Eigene Vorlage','Titel',t.title);if(!name)return;const d=await rpc('create',{parent:parentForNew(),title:name,kind:t.kind,body:t.body,meta:t.meta});await refresh();setDocument(d);view='write';await select(d.id);return}const templates:Record<string,string>={figure:'Name\nRolle in der Geschichte\nWunsch und Motivation\nKonflikt\nBeziehungen\nEntwicklung',place:'Ort\nAtmosphäre\nBesondere Merkmale\nBedeutung für die Handlung',scene:'Perspektive\nOrt und Zeit\nZiel der Szene\nKonflikt\nWendepunkt',research:'Fragestellung\nQuelle und Datum\nErkenntnisse\nOffene Fragen',script:'INT. ORT - TAG\n\nHandlung\n\nFIGUR\nDialog'};await addDocument(k==='script'?'script':'text',templates[k])},
+  templates:async()=>{const form=await modal('Aus einer Vorlage beginnen',`<div class="field"><label for="template">Vorlage</label><select name="template" id="template"><option value="figure">Figur</option><option value="place">Ort</option><option value="item">Gegenstand</option><option value="scene">Szene</option><option value="script">Drehbuch</option><option value="research">Recherche-Notiz</option>${(project.settings.templates??[]).map((t:any,i:number)=>`<option value="custom-${i}">${h(t.title)} (eigene Vorlage)</option>`).join('')}</select></div>`,'Abschnitt anlegen');if(!form)return;const k=String(form.get('template'));if(k==='figure'||k==='place'||k==='item'){await storyCards.create(k);return}if(k.startsWith('custom-')){await requireWrite();const t=project.settings.templates[Number(k.slice(7))];const name=await textPrompt('Eigene Vorlage','Titel',t.title);if(!name)return;const d=await rpc('create',{parent:parentForNew(),title:name,kind:t.kind,body:t.body,meta:t.meta});await refresh();setDocument(d);view='write';await select(d.id);return}const templates:Record<string,string>={figure:'Name\nRolle in der Geschichte\nWunsch und Motivation\nKonflikt\nBeziehungen\nEntwicklung',place:'Ort\nAtmosphäre\nBesondere Merkmale\nBedeutung für die Handlung',scene:'Perspektive\nOrt und Zeit\nZiel der Szene\nKonflikt\nWendepunkt',research:'Fragestellung\nQuelle und Datum\nErkenntnisse\nOffene Fragen',script:'INT. ORT - TAG\n\nHandlung\n\nFIGUR\nDialog'};await addDocument(k==='script'?'script':'text',templates[k])},
+  newStoryFigure:()=>storyCards.create('figure'),newStoryPlace:()=>storyCards.create('place'),newStoryItem:()=>storyCards.create('item'),
   documentMenu:async()=>{if(!project)return;await modal('Abschnitt bearbeiten',`<div class="dialog-list">${[['saveTemplate','Als eigene Vorlage sichern'],['manageCollection','Sammlungen bearbeiten'],['duplicate','Duplizieren'],['moveDialog','Verschieben / Reihenfolge'],['splitDocument','Ab Cursor in neuen Abschnitt teilen'],['mergeDocument','Mit folgendem Abschnitt zusammenführen'],['addToCollection','Zur Sammlung hinzufügen'],['attach','Recherchedatei hinzufügen'],['trashDocument','In den Papierkorb verschieben']].map(([a,t])=>`<button type="button" data-menu-action="${a}">${t}</button>`).join('')}</div>`,'Schließen')},
   duplicate:async()=>{await requireWrite();const d=current();const created=await rpc('create',{parent:d.parentId??'manuscript',title:d.title+' – Kopie',kind:d.kind,body:d.body,meta:d.meta});await refresh();setDocument(created);await select(created.id)},
   moveDialog:async()=>{await requireWrite();const d=current();const form=await modal('Abschnitt verschieben',`<div class="field"><label for="parent">Ziel</label><select name="parent" id="parent">${project.documents.filter((x:any)=>!x.deleted&&x.kind!=='asset'&&x.id!==selected).map((x:any)=>`<option value="${x.id}" ${x.id===d.parentId?'selected':''}>${h(x.title)}</option>`).join('')}</select></div>${field('Position (1 = Anfang)','position',d.position+1,'number')}`);if(form)await moveDocument(selected,String(form.get('parent')),Number(form.get('position'))-1)},
-  trashDocument:async()=>{await requireWrite();const d=current();if(await modal('In den Papierkorb verschieben?',`<p>„${h(d.title)}“ und seine Unterabschnitte bleiben im Papierkorb wiederherstellbar.</p>`,'Verschieben')){await refresh(await rpc('trash',{id:selected,deleted:true}));await select(d.parentId??'manuscript')}},
+  trashDocument:()=>trashDocument(selected),
   splitDocument:async()=>{await requireWrite();if(!active) return;const d=current(),ed=active,pos=ed.state.selection.from;const title=await textPrompt('Abschnitt teilen','Titel des neuen Abschnitts',d.title+' – Fortsetzung');if(!title)return;const tail=ed.state.doc.cut(pos).toJSON();const head=ed.state.doc.cut(0,pos).toJSON();if(!tail.content?.length)throw new Error('Am Dokumentende gibt es keinen weiteren Text.');await refresh(await rpc('split',{id:d.id,revision:d.revision,firstBody:JSON.stringify(head),secondBody:JSON.stringify(tail),title}));await select(selected)},
   mergeDocument:async()=>{await requireWrite();const d=current();const siblings=project.documents.filter((x:any)=>!x.deleted&&x.parentId===d.parentId&&x.kind!=='asset').sort((a:any,b:any)=>a.position-b.position);const next=siblings[siblings.findIndex((x:any)=>x.id===selected)+1];if(!next)throw new Error('Kein folgender Textabschnitt vorhanden.');if(!await modal('Abschnitte zusammenführen',`<p>„${h(next.title)}“ wird an „${h(d.title)}“ angehängt und anschließend in den Papierkorb verschoben. Beide Textstände bleiben erhalten.</p>`,'Zusammenführen'))return;const n=await getDoc(next.id);await refresh(await rpc('merge',{firstId:d.id,secondId:n.id,firstRevision:d.revision,secondRevision:n.revision}));await select(selected)},
   addToCollection:async()=>{await requireWrite();const list=(project.settings.collections??[]).filter((c:any)=>c.ids);if(!list.length)throw new Error('Bitte zuerst eine manuelle Sammlung anlegen.');const form=await modal('Zur Sammlung hinzufügen',`<div class="field"><label for="collection">Sammlung</label><select name="collection" id="collection">${list.map((c:any,i:number)=>`<option value="${i}">${h(c.title)}</option>`).join('')}</select></div>`);if(form){const c=list[Number(form.get('collection'))];c.ids=[...new Set([...c.ids,selected])];await saveProjectSettings()}},
@@ -322,11 +363,42 @@ const actions:Record<string,()=>any>={
 };
 async function perform(action:string) {try{await actions[action]?.()}catch(e:any){toast(e.message,true)}}
 
-document.addEventListener('pointerdown',event=>{if((event.target as HTMLElement).closest('[data-action="proof"],[data-inspector="proof"]'))event.preventDefault()});
+const documentContextMenu=$('documentContextMenu'),contextTrash=$<HTMLButtonElement>('contextTrash');
+let contextDocument='',contextProject='',contextOrigin:HTMLElement|null=null;
+function openDocumentContext(event:MouseEvent|KeyboardEvent) {
+  const row=(event.target as HTMLElement).closest<HTMLElement>('#tree [data-doc],[data-card],[data-outline],[data-story-action="open"]');
+  if(!row)return;
+  const id=row.dataset.doc??row.dataset.card??row.dataset.outline??row.dataset.id!,d=info(id);
+  if(!d||d.deleted)return;
+  event.preventDefault();contextDocument=id;contextProject=project.id;contextOrigin=row;
+  $('documentContextTitle').textContent=d.title;
+  contextTrash.disabled=project.readOnly||!d.parentId;
+  $('documentContextHint').textContent=project.readOnly?'Dieses Projekt ist schreibgeschützt.':!d.parentId?'Die festen Projektbereiche bleiben erhalten.':'';
+  documentContextMenu.showPopover();
+  const rect=row.getBoundingClientRect(),x=event instanceof MouseEvent&&event.clientX?event.clientX:rect.left+12,y=event instanceof MouseEvent&&event.clientY?event.clientY:rect.bottom;
+  documentContextMenu.style.left=Math.max(8,Math.min(x,innerWidth-documentContextMenu.offsetWidth-8))+'px';
+  documentContextMenu.style.top=Math.max(8,Math.min(y,innerHeight-documentContextMenu.offsetHeight-8))+'px';
+  (contextTrash.disabled?documentContextMenu:contextTrash).focus({preventScroll:true});
+}
+document.addEventListener('contextmenu',openDocumentContext);
+document.addEventListener('keydown',event=>{if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10'))openDocumentContext(event)});
+documentContextMenu.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();documentContextMenu.hidePopover();contextOrigin?.focus({preventScroll:true})}
+  else if(event.key==='Tab')documentContextMenu.hidePopover();
+  else if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();if(!contextTrash.disabled)contextTrash.focus()}
+});
+contextTrash.addEventListener('click',()=>{
+  const id=contextDocument,owner=contextProject;documentContextMenu.hidePopover();
+  void trashDocument(id,owner).catch(e=>toast(e.message,true)).finally(()=>{
+    const row=document.querySelector<HTMLElement>(`#tree [data-doc="${CSS.escape(info(id)?.deleted?selected:id)}"]`);row?.focus({preventScroll:true});
+  });
+});
+
+document.addEventListener('pointerdown',event=>{if((event.target as HTMLElement).closest('[data-action="proof"],[data-inspector="proof"],[data-inspector="cards"],[data-story-action="link"]'))event.preventDefault()});
 document.addEventListener('click',event=>{
   const el=event.target as HTMLElement;
   const recent=el.closest<HTMLButtonElement>('[data-recent-project]');if(recent){recent.disabled=true;void(async()=>{await flush();await adopt(await rpc('openRecent',{path:recent.dataset.recentProject}))})().catch(e=>toast(e.message,true)).finally(()=>{recent.disabled=false});return}
-  const link=el.closest<HTMLAnchorElement>('.tiptap a');if(link){event.preventDefault();const href=link.getAttribute('href')??'';if(href.startsWith('#')){const id=href.slice(1);if(info(id)&&!info(id).deleted){view='write';void select(id).catch(e=>toast(e.message,true))}else toast('Der verknüpfte Abschnitt ist nicht verfügbar.',true)}else if(/^(https?:\/\/|mailto:)/i.test(href))window.open(href,'_blank','noopener');return}
+  const link=el.closest<HTMLAnchorElement>('.tiptap a');if(link){event.preventDefault();const href=link.getAttribute('href')??'';if(href.startsWith('#')){const id=href.slice(1);if(info(id)&&!info(id).deleted){if(!isStoryCard(info(id)))view='write';void select(id).catch(e=>toast(e.message,true))}else toast('Der verknüpfte Abschnitt ist nicht verfügbar.',true)}else if(/^(https?:\/\/|mailto:)/i.test(href))window.open(href,'_blank','noopener');return}
   const noteItem=el.closest<HTMLElement>('[data-note-id]');if(noteItem){void editNote(noteItem.dataset.noteId!).catch(e=>toast(e.message,true));return}
   const menu=el.closest<HTMLElement>('[data-menu-action]');if(menu){const dialog=$<HTMLDialogElement>('dialog');dialog.addEventListener('close',()=>{void perform(menu.dataset.menuAction!)},{once:true});dialog.close('cancel');return}
   const cmd=el.closest<HTMLElement>('[data-editor-command]');if(cmd){const c=cmd.dataset.editorCommand!;$<HTMLDialogElement>('dialog').close('cancel');(active?.chain().focus() as any)?.[c]?.().run();return}
@@ -339,7 +411,7 @@ document.addEventListener('click',event=>{
   const fmt=el.closest<HTMLElement>('[data-format]');if(fmt&&active){const format=fmt.dataset.format!;const chain=active.chain().focus();if(['left','center','right','justify'].includes(format))chain.setTextAlign(format).run();else(chain as any)['toggle'+format[0].toUpperCase()+format.slice(1)]?.().run();updateFormatButtons();return}
   const asset=el.closest<HTMLElement>('[data-asset-download]');if(asset){void rpc('exportAsset',{id:asset.dataset.assetDownload}).catch(e=>toast(e.message,true));return}
   const result=el.closest<HTMLElement>('[data-result]');if(result){view='write';void select(result.dataset.result!);return}
-  const restore=el.closest<HTMLElement>('[data-restore-doc]');if(restore){void(async()=>{await refresh(await rpc('trash',{id:restore.dataset.restoreDoc,deleted:false}));view='write';await select(restore.dataset.restoreDoc!)})().catch(e=>toast(e.message,true));return}
+  const restore=el.closest<HTMLElement>('[data-restore-doc]');if(restore){void restoreDocument(restore.dataset.restoreDoc!).catch(e=>toast(e.message,true));return}
   const compare=el.closest<HTMLElement>('[data-compare]');if(compare){void(async()=>{await flush();const snapshots=await rpc('snapshots',{id:selected});const s=snapshots.find((x:any)=>x.id===compare.dataset.compare);await modal('Änderungen seit „'+s.title+'“',`<p class="muted">Vergleich des Haupttexts: rot entfernt, grün ergänzt. Formatierung und Fußnoten werden hier nicht verglichen.</p><div class="diff dialog-body-scroll">${diffWords(plainText(s.body),plainText(current().body)).map(p=>`<${p.added?'ins':p.removed?'del':'span'}>${h(p.value)}</${p.added?'ins':p.removed?'del':'span'}>`).join('')}</div>`,'Schließen')})().catch(e=>toast(e.message,true));return}
   const restoreSnapshot=el.closest<HTMLElement>('[data-restore-snapshot]');if(restoreSnapshot){void(async()=>{await requireWrite();if(await modal('Textstand wiederherstellen','<p>Der aktuelle Text wird zuvor als eigener Stand gesichert.</p>','Wiederherstellen')){setDocument(await rpc('restoreSnapshot',{id:selected,snapshotId:restoreSnapshot.dataset.restoreSnapshot}));await select(selected)}})().catch(e=>toast(e.message,true));return}
 });
@@ -364,6 +436,50 @@ document.addEventListener('dragover',event=>{if(dragged&&(event.target as HTMLEl
 document.addEventListener('drop',event=>{const target=(event.target as HTMLElement).closest<HTMLElement>('[data-doc],[data-card]');if(!target||!dragged)return;event.preventDefault();const source=dragged;dragged='';const id=target.dataset.doc??target.dataset.card!;if(id===source)return;const d=info(id);const parent=target.dataset.card?d.parentId:d.id;const index=target.dataset.card?d.position:project.documents.filter((x:any)=>x.parentId===parent).length;void moveDocument(source,parent,index).catch(e=>toast(e.message,true))});
 document.addEventListener('dragend',()=>dragged='');
 
+async function integrationCardCheck(checks:string[]) {
+  const waitFor=async(check:()=>boolean)=>{for(let attempt=0;attempt<100;attempt++){if(check())return;await new Promise(resolve=>setTimeout(resolve,50))}throw new Error('Kartenansicht wurde nicht rechtzeitig aktualisiert.')};
+  let card=project.documents.find((d:any)=>d.meta.nativeStoryCheck==='figure'), scene=project.documents.find((d:any)=>d.meta.nativeStoryCheck==='scene');
+  if(card&&scene){
+    const persisted=await rpc('document',{id:card.id});
+    if(persisted.meta.storyCard.aliases[0]!=='Heimkehrerin'||persisted.meta.custom.Prüfung!=='Gespeichert'||!scene.meta.storyCardIds.includes(card.id))throw new Error('Karten aus dem vorherigen Programmstart fehlen.');
+    checks.push('Karten und Zuordnungen aus vorherigem Programmstart geladen');
+  } else {
+    card=await rpc('create',{parent:'research',title:'Mara Berg',kind:'text',meta:{nativeStoryCheck:'figure',storyCard:{type:'figure',aliases:[],fields:{}},custom:{Prüfung:'Gespeichert'}}});
+    scene=await rpc('create',{parent:'manuscript',title:'Native Kartenszene',kind:'text',body:JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Mara Berg ist die Heimkehrerin.'}]}]}),meta:{nativeStoryCheck:'scene'}});
+    await refresh();
+  }
+  view='write';await select(scene.id);await storyCards.open(card.id);await waitFor(()=>!!document.getElementById('storyAliases'));
+  $<HTMLTextAreaElement>('storyAliases').value='Heimkehrerin';$('storyAliases').dispatchEvent(new Event('input',{bubbles:true}));
+  $<HTMLTextAreaElement>('storyField-motivation').value='Die Wahrheit finden.';$('storyField-motivation').dispatchEvent(new Event('input',{bubbles:true}));
+  document.querySelector<HTMLButtonElement>('[data-story-action="assign"]')!.click();await flush();
+  await waitFor(()=>document.querySelectorAll('.editor-sheet [data-story-ids]').length===2);
+  if(selected!==scene.id)throw new Error('Kartenöffnung hat die Szene gewechselt.');
+  checks.push('Figurenkarte und Alias im Notizbuch → Namenserkennung → SQLite');
+  const filePath=project.filePath;await adopt(await rpc('openRecent',{path:filePath}));await select(scene.id);await storyCards.open(card.id);
+  await waitFor(()=>document.querySelectorAll('.editor-sheet [data-story-ids]').length===2&&$<HTMLTextAreaElement>('storyField-motivation')?.value==='Die Wahrheit finden.');
+  if(!current().meta.storyCardIds.includes(card.id))throw new Error('Szenenzuordnung wurde nicht gespeichert.');
+  checks.push('Projekt wieder geöffnet: Kartenfelder, Alias und Szenenzuordnung erhalten');
+  let extraScene=project.documents.find((d:any)=>d.meta.nativeStoryCheck==='extra-scene');
+  if(!extraScene){extraScene=await rpc('create',{parent:'manuscript',title:'Orts- und Gegenstandsprüfung',kind:'text',body:JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Haus am See ist das Seehaus. Der Silberschlüssel ist der Hausschlüssel.'}]}]}),meta:{nativeStoryCheck:'extra-scene'}});await refresh()}
+  const extraIds:string[]=[];
+  for(const [type,title,alias,field,value] of [['place','Haus am See','Seehaus','atmosphere','Still und verlassen.'],['item','Silberschlüssel','Hausschlüssel','owner','Mara']]) {
+    let extra=project.documents.find((d:any)=>d.meta.nativeStoryCheck===type);
+    if(extra){
+      if(extra.meta.storyCard.aliases[0]!==alias||extra.meta.storyCard.fields[field]!==value||!extraScene.meta.storyCardIds?.includes(extra.id))throw new Error('Kartenwerte aus vorherigem Start fehlen: '+type);
+      checks.push(type+'-Karte und Zuordnung aus vorherigem Programmstart geladen');
+    }else{extra=await rpc('create',{parent:'research',title,kind:'text',meta:{nativeStoryCheck:type,storyCard:{type,aliases:[],fields:{}}}});await refresh()}
+    extraIds.push(extra.id);await select(extraScene.id);await storyCards.open(extra.id);
+    await waitFor(()=>$<HTMLInputElement>('storyTitle')?.value===title);
+    $<HTMLTextAreaElement>('storyAliases').value=alias;$('storyAliases').dispatchEvent(new Event('input',{bubbles:true}));
+    $<HTMLTextAreaElement>('storyField-'+field).value=value;$('storyField-'+field).dispatchEvent(new Event('input',{bubbles:true}));
+    document.querySelector<HTMLButtonElement>('[data-story-action="assign"]')!.click();await flush();
+  }
+  await adopt(await rpc('openRecent',{path:filePath}));await select(extraScene.id);await storyCards.open(extraIds[1]);
+  await waitFor(()=>document.querySelectorAll('.editor-sheet [data-story-ids]').length===4&&$<HTMLTextAreaElement>('storyField-owner')?.value==='Mara');
+  if(!extraIds.every(id=>current().meta.storyCardIds?.includes(id)))throw new Error('Orts- oder Gegenstandszuordnung fehlt.');
+  checks.push('Orts- und Gegenstandskarten → Namenserkennung → SQLite → Wiederöffnen');
+  await rpc('integrationCapture',{phase:'cards'});
+}
 async function integrationCheck() {
   const checks:string[]=[];
   try {const reopened=await rpc('openRecent',{path:project.filePath});if(reopened.id!==project.id)throw new Error('Zuletzt geöffnet: falsches Projekt');checks.push('Zuletzt geöffnet → Projektzugriff');const d=await rpc('create',{parent:'manuscript',title:'Native Editorprüfung',kind:'text'});await refresh();setDocument(d);await select(d.id);active!.commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Grüße aus dem Windows-Editor.',marks:[{type:'bold'}]},{type:'footnote',attrs:{id:'native-note',text:'Eine echte Fußnote.'}}]}]});await flush();const saved=await rpc('document',{id:d.id});if(!saved.body.includes('Windows-Editor'))throw new Error('Speichern fehlgeschlagen');checks.push('Editor → Bridge → SQLite');if(!saved.body.includes('footnote'))throw new Error('Fußnote fehlt');checks.push('Fußnote und Formatierung');await rpc('integrationCapture',{phase:'editor'});
@@ -380,6 +496,6 @@ async function integrationCheck() {
       if(!document.querySelector<HTMLElement>(selector)?.getClientRects().length)throw new Error('Kontoanmeldung nicht sichtbar: '+$('proofAccount').textContent);
       await rpc('integrationCapture',{phase});checks.push(engine+'-Anmeldeknopf im Windows-Programm sichtbar');
     }
-    for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
+    for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await integrationCardCheck(checks);await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
 }
 void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.updateInfo){updates.configure(result.updateInfo,preferences.checkUpdatesAtStartup!==false);if(!result.integrationTest&&preferences.checkUpdatesAtStartup!==false)void updates.check(true)}if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});

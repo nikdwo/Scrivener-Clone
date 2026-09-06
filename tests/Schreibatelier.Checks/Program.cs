@@ -16,6 +16,8 @@ if (args.FirstOrDefault() == "--crash-writer")
 var workspace = args.FirstOrDefault() ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
 if (args.Contains("--updates")) { await UpdateChecks.Run(workspace, args.Contains("--live")); return; }
 var root = Path.Combine(workspace, ".work", "checks", Model.Id()); Directory.CreateDirectory(root);
+if (args.Contains("--cards")) { await StoryCardChecks.Run(root); return; }
+await StoryCardChecks.Run(root);
 var passed = 0;
 void Check(bool condition, string label) { if (!condition) throw new Exception("FAILED: " + label); passed++; Console.WriteLine("PASS " + label); }
 void Throws<T>(Action action, string label) where T : Exception { try { action(); } catch (T) { Check(true, label); return; } throw new Exception("FAILED (no exception): " + label); }
