@@ -10,7 +10,8 @@ test.beforeEach(async({page})=>{
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
       try{
         let result:any=null;
-        if(action==='ready')result={project:clone(project),tools:{},preferences:{}};
+        if(action==='ready')result={project:clone(project),tools:{},preferences:JSON.parse(sessionStorage.getItem('testPreferences')??'{}')};
+        else if(action==='preferences')sessionStorage.setItem('testPreferences',JSON.stringify(args));
         else if(action==='state')result=clone(project);
         else if(action==='document')result=clone(docs.find(d=>d.id===args.id));
         else if(action==='save'||action==='replace'){await new Promise(r=>setTimeout(r,(window as any).__test.saveDelay));if((window as any).__test.failSave)throw new Error('Datenträger ist schreibgeschützt.');result=args.documents.map((d:any)=>{const old=docs.find(x=>x.id===d.id);if(old.revision!==d.revision)throw new Error('Versionskonflikt');if(action==='replace')snapshots.push({...clone(old),documentId:old.id,title:'Vor Suchen und Ersetzen'});Object.assign(old,clone(d),{revision:d.revision+1});return clone(old)})}
@@ -66,6 +67,48 @@ test('visual baseline light, dark, corkboard and compact viewport',async({page})
   await page.locator('[data-action="theme"]').click();await page.locator('[data-doc="chapter"]').click();await page.locator('[data-view="board"]').click();await page.screenshot({path:'artifacts/screenshots/board.png',fullPage:true});
   await page.setViewportSize({width:960,height:540});await page.locator('[data-card="scene"]').dblclick();await expect(page.locator('#documentTitle')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+});
+
+test('notebook resizes by dragging and keyboard, persists and fits smaller windows',async({page})=>{
+  const notebook=page.locator('#notebook'),handle=page.getByRole('separator',{name:'Notizbuchbreite ändern'});
+  await page.locator('[data-doc="scene"]').click();
+  await page.locator('[data-inspector="notes"]').click();
+  await page.locator('#metaNotes').fill('Diese Notiz bleibt beim Verbreitern erhalten.');
+  const drag=async(delta:number)=>{
+    const box=(await handle.boundingBox())!;
+    await page.mouse.move(box.x+box.width/2,box.y+40);await page.mouse.down();
+    await page.mouse.move(box.x+box.width/2+delta,box.y+40,{steps:8});await page.mouse.up();
+    await expect(page.locator('body')).not.toHaveClass(/resizing-inspector/);
+  };
+  await expect(notebook).toHaveCSS('width','266px');
+  await drag(-120);await expect(notebook).toHaveCSS('width','386px');
+  await drag(50);await expect(notebook).toHaveCSS('width','336px');
+  await expect(page.locator('#metaNotes')).toHaveValue('Diese Notiz bleibt beim Verbreitern erhalten.');
+  await handle.press('ArrowLeft');await expect(notebook).toHaveCSS('width','346px');
+  await handle.press('ArrowRight');await expect(notebook).toHaveCSS('width','336px');
+  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('testPreferences')!).inspectorWidth)).toBe(336);
+  await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
+  await page.reload();await expect(notebook).toHaveCSS('width','336px');
+  await drag(1200);await expect(notebook).toHaveCSS('width','230px');
+  await drag(-1200);await expect(notebook).toHaveCSS('width','764px');
+  await handle.press('Home');await expect(notebook).toHaveCSS('width','230px');
+  await handle.press('End');await expect(notebook).toHaveCSS('width','764px');
+  for(const width of [1250,1100,960,760]){
+    await page.setViewportSize({width,height:700});
+    if(width===960){await expect(notebook).toBeHidden();await page.locator('[data-action="inspectorToggle"]').click()}
+    await expect(notebook).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+    const box=(await notebook.boundingBox())!;
+    expect(box.x+box.width).toBe(width);
+    expect(box.width).toBe(Math.min(764,width-(width>1200?696:width>1050?640:190)));
+    await expect(handle).toHaveAttribute('aria-valuenow',String(box.width));
+    await page.keyboard.press('F11');await expect(notebook).toBeHidden();await expect(handle).toBeHidden();
+    await page.keyboard.press('Escape');await expect(notebook).toBeVisible();
+  }
+  await handle.press('Home');await drag(-100);await expect(notebook).toHaveCSS('width','330px');
+  await page.setViewportSize({width:1460,height:900});
+  await page.locator('[data-doc="scene"]').click();
+  await page.screenshot({path:'artifacts/screenshots/notebook-resizable.png'});
 });
 
 test('project replacement spans formatting and preserves previous versions',async({page})=>{

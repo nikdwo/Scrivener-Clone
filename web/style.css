@@ -142,9 +142,12 @@ button.active {
   font-size:17px}
 
 .workspace {
+  --sidebar-width:246px;
+  --editor-min-width:450px;
+  --inspector-size:clamp(230px,var(--inspector-width,266px),calc(100vw - var(--sidebar-width) - var(--editor-min-width)));
   height:calc(100vh - 76px);
   display:grid;
-  grid-template-columns:246px minmax(450px,1fr) 266px}
+  grid-template-columns:var(--sidebar-width) minmax(var(--editor-min-width),1fr) var(--inspector-size)}
 
 .sidebar {
   display:flex;
@@ -577,10 +580,32 @@ button.active {
   flex:1}
 
 .inspector {
+  position:relative;
+  min-height:0;
   border-left:1px solid var(--line);
-  padding:25px 19px;
   background:var(--bg);
+  overflow:hidden}
+
+.inspector-body {
+  height:100%;
+  padding:25px 19px;
   overflow:auto}
+
+.inspector-resizer {
+  position:absolute;
+  inset:0 auto 0 0;
+  width:6px;
+  z-index:1;
+  cursor:col-resize;
+  touch-action:none}
+
+.inspector-resizer:hover,.inspector-resizer:focus-visible,.resizing-inspector .inspector-resizer {
+  background:var(--accent);
+  outline:none}
+
+.resizing-inspector,.resizing-inspector * {
+  cursor:col-resize!important;
+  user-select:none!important}
 
 .inspector-header {
   font-size:9px;
@@ -1055,7 +1080,9 @@ progress {
 
 @media(max-width:1200px) {
   .workspace {
-  grid-template-columns:210px minmax(430px,1fr) 230px}
+  --sidebar-width:210px;
+  --editor-min-width:430px;
+  --inspector-size:clamp(230px,var(--inspector-width,230px),calc(100vw - var(--sidebar-width) - var(--editor-min-width)))}
 
 .editor-pane {
   padding:20px}
@@ -1069,7 +1096,7 @@ progress {
 .brand {
   width:217px}
 
-.inspector {
+.inspector-body {
   padding:22px 14px}
 
 .formatbar {
@@ -1097,7 +1124,10 @@ progress {
 
 @media(max-width:1050px) {
   .workspace {
-  grid-template-columns:190px minmax(0,1fr)}
+  --sidebar-width:190px;
+  --editor-min-width:0px;
+  --inspector-size:clamp(230px,var(--inspector-width,270px),calc(100vw - var(--sidebar-width)));
+  grid-template-columns:var(--sidebar-width) minmax(0,1fr)}
 
 .inspector {
   display:none}
@@ -1109,13 +1139,13 @@ progress {
   display:block;
   font-size:11px}
 
-.inspector-visible .inspector {
+body.inspector-visible:not(.focus-mode) .inspector {
   display:block;
   position:fixed;
   right:0;
   top:76px;
   bottom:0;
-  width:270px;
+  width:var(--inspector-size);
   z-index:4;
   box-shadow:var(--shadow);
   background:var(--paper)}

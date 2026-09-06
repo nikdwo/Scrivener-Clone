@@ -36,6 +36,44 @@ const emptyBody = JSON.stringify({type:'doc',content:[{type:'paragraph'}]});
 
 function toast(text: string, error = false) { $('toast').textContent=text; $('toast').classList.remove('hidden'); $('toast').classList.toggle('error',error); if (!error) setTimeout(()=>{$('toast').classList.add('hidden')},5000); }
 function state(text: string, error = false) { $('saveState').textContent=text; $('saveState').classList.toggle('error',error); }
+function inspectorMaxWidth() {
+  const style=getComputedStyle($('workspace'));
+  return Math.max(230,window.innerWidth-parseFloat(style.getPropertyValue('--sidebar-width'))-parseFloat(style.getPropertyValue('--editor-min-width')));
+}
+function updateInspectorSize(width?:number) {
+  if(width!==undefined)$('workspace').style.setProperty('--inspector-width',`${Math.max(230,Math.min(inspectorMaxWidth(),width))}px`);
+  const handle=$('inspectorResize');
+  handle.setAttribute('aria-valuemax',String(inspectorMaxWidth()));
+  const actualWidth=$('notebook').getBoundingClientRect().width;
+  if(actualWidth)handle.setAttribute('aria-valuenow',String(Math.round(actualWidth)));
+}
+function saveInspectorSize() {
+  preferences.inspectorWidth=Math.round($('notebook').getBoundingClientRect().width);
+  void rpc('preferences',preferences).catch(e=>toast(e.message,true));
+}
+const inspectorResize=$('inspectorResize');
+inspectorResize.addEventListener('pointerdown',event=>{
+  if(event.button!==0||!event.isPrimary)return;
+  event.preventDefault();inspectorResize.focus();inspectorResize.setPointerCapture(event.pointerId);
+  const startX=event.clientX,startWidth=$('notebook').getBoundingClientRect().width;
+  document.body.classList.add('resizing-inspector');
+  const move=(e:PointerEvent)=>updateInspectorSize(startWidth+startX-e.clientX);
+  const stop=()=>{
+    inspectorResize.removeEventListener('pointermove',move);
+    document.body.classList.remove('resizing-inspector');saveInspectorSize();
+  };
+  inspectorResize.addEventListener('pointermove',move);
+  inspectorResize.addEventListener('lostpointercapture',stop,{once:true});
+});
+inspectorResize.addEventListener('keydown',event=>{
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const width=$('notebook').getBoundingClientRect().width;
+  updateInspectorSize(event.key==='Home'?230:event.key==='End'?inspectorMaxWidth():width+(event.key==='ArrowLeft'?10:-10));
+  saveInspectorSize();
+});
+new ResizeObserver(()=>updateInspectorSize()).observe($('notebook'));
+window.addEventListener('resize',()=>updateInspectorSize());
 function info(id = selected) { return project?.documents.find((d:any)=>d.id===id); }
 function current() { return cache.get(selected); }
 function parentForNew() { const d=info(); return d && !d.deleted && d.kind!=='asset' ? d.id : 'manuscript'; }
@@ -313,4 +351,4 @@ async function integrationCheck() {
   const checks:string[]=[];
   try {const d=await rpc('create',{parent:'manuscript',title:'Native Editorprüfung',kind:'text'});await refresh();setDocument(d);await select(d.id);active!.commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Grüße aus dem Windows-Editor.',marks:[{type:'bold'}]},{type:'footnote',attrs:{id:'native-note',text:'Eine echte Fußnote.'}}]}]});await flush();const saved=await rpc('document',{id:d.id});if(!saved.body.includes('Windows-Editor'))throw new Error('Speichern fehlgeschlagen');checks.push('Editor → Bridge → SQLite');if(!saved.body.includes('footnote'))throw new Error('Fußnote fehlt');checks.push('Fußnote und Formatierung');await rpc('integrationCapture',{phase:'editor'});for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
 }
-void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};document.body.classList.toggle('dark',preferences.theme==='dark');if(result.project)await adopt(result.project);if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});
+void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});
