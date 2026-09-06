@@ -24,7 +24,7 @@ try {
         [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file.FullName, $relative, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
     }
     $writer = [IO.StreamWriter]::new($zip.CreateEntry('portable.txt').Open())
-    try { $writer.WriteLine('Schreibatelier Alpha 1: Einstellungen, Sicherungen und WebView-Daten liegen im Unterordner Data. Diese Datei aktiviert den portablen Modus.') }
+    try { $writer.WriteLine('Schreibatelier Alpha 2: Einstellungen, Sicherungen und WebView-Daten liegen im Unterordner Data. Diese Datei aktiviert den portablen Modus.') }
     finally { $writer.Dispose() }
 }
 finally { $zip.Dispose() }

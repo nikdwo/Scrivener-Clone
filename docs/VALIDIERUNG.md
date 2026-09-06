@@ -1,6 +1,12 @@
-# Validierung – Alpha 1 (0.1.0-alpha.1)
+# Validierung – Alpha 2 (0.1.0-alpha.2)
 
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Alpha-2-Prüfungen, 6. September 2026
+
+Nach der Zusammenführung wurden die TypeScript-Prüfung, vier JavaScript-Logiktests, 77 Speicher-/Konverterprüfungen, acht Prüfungen der lokalen Sprachprüfung und 13 Edge-Oberflächentests erfolgreich ausgeführt. Die Oberflächentests schließen den Abbruch des Kontodialogs mit leeren oder ungültigen Pflichtfeldern ein. Die Sprachprüfungsanbindung einschließlich der bereits erfolgreich getesteten ChatGPT-Korrektur bleibt bei der Zusammenführung unverändert.
+
+Die Paketprüfung kontrolliert für Alpha 2 zusätzlich die echte lokale Sprachprüfung bis zum gespeicherten Korrekturvorschlag und Undo sowie die mitgelieferten Herkunftsnachweise. Ihre Ergebnisse werden unter `artifacts/alpha2-release-checks.log` abgelegt.
 
 ## Alpha-1-Veröffentlichung, 6. September 2026
 
@@ -26,7 +32,7 @@ Installer mit Inno Setup 7.1.0 x64 gebaut. Der Compiler-Download wurde gegen SHA
 
 Der Prüfdatensatz mit **1.000 Abschnitten / 500.000 Wörtern** benötigte in einem gemessenen Lauf 361 ms für den transaktionalen Import, 12 ms für die Projektzusammenfassungen und 12 ms für die auf 500 Treffer begrenzte Suche. Das sind Einzelmessungen, keine allgemeine Leistungsgarantie. Der Test prüft außerdem, dass die Projektübersicht keine vollständigen Abschnittstexte mitlädt.
 
-`tests/web.test.mjs` prüft drei zusammengehörige Logikbereiche: Baumreihenfolge/Zyklenschutz, Unicode-Statistik ohne Fußnoten sowie Sammlungen/HTML-Escaping.
+`tests/web.test.mjs` prüft Baumreihenfolge/Zyklenschutz, Unicode-Statistik ohne Fußnoten, Sammlungen/HTML-Escaping sowie die Textaufteilung und Positionszuordnung der Sprachprüfung einschließlich Emoji und Fußnoten-Barrieren.
 
 `tests/ui/editor.spec.ts` prüft mit einer Test-Bridge in echtem Edge:
 
@@ -37,12 +43,19 @@ Der Prüfdatensatz mit **1.000 Abschnitten / 500.000 Wörtern** benötigte in ei
 5. Screenshots für hell/dunkel/Pinnwand und ein kompaktes Fenster mit 960 × 540 CSS-Pixeln ohne Seitenüberlauf.
 6. Projektweites Ersetzen über unterschiedliche Textformatierung hinweg mit vorherigen Textständen.
 7. Schriftgestaltung, Bearbeiten von Fußnoten und Wiederverwendung einer eigenen Vorlage.
+8. Breitenverstellung des Notizbuchs mit Maus und Tastatur, Speicherung und Anpassung an kleinere Fenster.
+9. Sprachprüfung: korrekte Fundstellen, erhaltene Formatierung und Fußnoten, Rückgängig und verworfene veraltete Ergebnisse.
+10. Projektwörterbuch, gezieltes Senden nur der Markierung, Sprach- und tatsächliche Modellauswahl, automatische lokale Prüfung und Schreibschutz. Die Online-Antworten kommen hier aus der Test-Bridge; das ist keine bestätigte Anbieterprüfung.
+
+`tests/Schreibatelier.ProofChecks` prüft zusätzlich die echte lokale LanguageTool-Engine mit einem deutschen Rechtschreib- und Grammatikfehler sowie Aufträgen für Deutschland, Österreich und die Schweiz. Die Parserprüfungen kontrollieren UTF-16-Offsets und lehnen erfundene oder uneindeutige KI-Originalstellen ab. Mit `--codex` wird außerdem der echte Codex App Server gestartet und der Kontostatus eines eigenen Testprofils abgefragt.
+
+Der ausdrücklich zu wählende Modus `--codex-live` verwendet die vorhandene ChatGPT-Anmeldung von Schreibatelier und sendet ausschließlich einen fest eingebauten Prüfsatz. Am 6. September 2026 wurden mit Codex CLI 0.147.0 und dem tatsächlich angebotenen GPT-5.6-Sol eine Rechtschreibkorrektur (`Feler` → `Fehler`) und eine Grammatikkorrektur (`ein Apfel` → `einen Apfel`) bestätigt. Der Produktionscode verlangt vor dem Senden des Texts die Bestätigung des beschränkten Berechtigungsprofils. Eine LanguageTool-Premium-Prüfung mit Benutzerkonto steht noch aus.
 
 Die Browsertests laufen außerhalb der restriktiven Agent-Sandbox: darin wurden Testprozesse zwar ausgeführt, aber das Beenden des Testservers funktionierte nicht zuverlässig. Die uneingeschränkte Prüfung beendet sich regulär mit dem Testergebnis. Dies betrifft die Testumgebung, nicht eine Administratoranforderung der Anwendung.
 
 ## Echte Windows-Anwendung
 
-Der Modus `--integration-test <Testprojekt.schreibprojekt>` startet WPF + WebView2, erstellt einen Testabschnitt, schreibt Rich Text/Fußnote durch die echte Bridge in SQLite und liest ihn erneut aus. Außerdem werden Pinnwand und Rechercheansichten aufgerufen. Er ist nur auf die eigens angelegte Testdatei anzuwenden.
+Der Modus `--integration-test <Testprojekt.schreibprojekt>` startet WPF + WebView2, erstellt einen Testabschnitt, schreibt Rich Text/Fußnote durch die echte Bridge in SQLite und liest ihn erneut aus. Anschließend prüft die echte lokale LanguageTool-Engine den Text; eine Korrektur wird übernommen, in SQLite gelesen und rückgängig gemacht. Außerdem werden Pinnwand und vorhandene Rechercheansichten aufgerufen. Er ist nur auf die eigens angelegte Testdatei anzuwenden.
 
 `result.json` und native WebView2-Bildaufnahmen liegen nach dieser Prüfung unter `.work/app-test`. Die PDF-Aufnahme zeigte den integrierten PDF-Betrachter mit tatsächlich gerendertem Inhalt. Die HTML-Aufnahme zeigte den statischen Recherchetext; das absichtlich eingebaute Skript, das den Seiteninhalt ersetzen sollte, wurde nicht ausgeführt. Die helle und dunkle Editoroberfläche wurde visuell geprüft.
 

@@ -1,25 +1,25 @@
-# Schreibatelier – Alpha 1
+# Schreibatelier – Alpha 2
 
-Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 1 (`0.1.0-alpha.1`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
+Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 2 (`0.1.0-alpha.2`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
 
-## Alpha 1 herunterladen und starten
+## Alpha 2 herunterladen und starten
 
-**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Scrivener-Clone/releases/tag/v0.1.0-alpha.1) sind als Vorabversion gekennzeichnet und nur für Personen mit Repository-Zugriff sichtbar.
+**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Scrivener-Clone/releases/tag/v0.1.0-alpha.2) sind als Vorabversion gekennzeichnet und nur für Personen mit Repository-Zugriff sichtbar.
 
 | Download | Verwendung |
 | --- | --- |
-| [Windows-Installer](https://github.com/nikdwo/Scrivener-Clone/releases/download/v0.1.0-alpha.1/Schreibatelier-0.1.0-alpha.1-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
-| [Portables ZIP](https://github.com/nikdwo/Scrivener-Clone/releases/download/v0.1.0-alpha.1/Schreibatelier-0.1.0-alpha.1-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
+| [Windows-Installer](https://github.com/nikdwo/Scrivener-Clone/releases/download/v0.1.0-alpha.2/Schreibatelier-0.1.0-alpha.2-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
+| [Portables ZIP](https://github.com/nikdwo/Scrivener-Clone/releases/download/v0.1.0-alpha.2/Schreibatelier-0.1.0-alpha.2-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
 
 Im portablen Modus liegen Einstellungen, automatische Sicherungen, Vorschauen und WebView-Daten unter `Data` neben der EXE. Zum Umziehen den gesamten Ordner bei geschlossener Anwendung kopieren. Manuskripte bleiben an dem Ort, den du beim Speichern auswählst; außerhalb abgelegte Projekte müssen separat mitgenommen werden. Temporäre Konverterdateien verwenden weiterhin den Windows-Temp-Ordner.
 
-Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 1](docs/RELEASE-ALPHA-1.md).
+Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 2](docs/RELEASE-ALPHA-2.md).
 
 ## Aus dem Quellprojekt starten
 
 **Im Projektordner einfach „Schreibatelier starten“ doppelklicken.** Die Windows-Verknüpfung öffnet die fertige Anwendung. Jeder Release-Build erstellt bzw. aktualisiert sie automatisch; nach dem Verschieben des Quellprojektordners lässt sie sich mit `scripts/create-shortcut.ps1` neu erzeugen.
 
-Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.1/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.1/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
+Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.2/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.2/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
 
 Über **Datei → Neues Projekt** eine `.schreibprojekt`-Datei anlegen. Darin werden Text, Projektstruktur, Rechercheanhänge und Textstände gespeichert. Eine vorhandene Datei wird beim Anlegen eines Projekts niemals überschrieben.
 
@@ -40,6 +40,8 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 - Sammlungen wählen Abschnitte manuell oder anhand von Titel/Metadaten. Verwaltung und Hinzufügen stehen im Abschnittsmenü.
 - **Strg+S** speichert sofort. **F11** schaltet den Fokusmodus um, **Escape** beendet ihn. **Zweite Ansicht** öffnet einen Abschnitt oder Anhang zum Nachschlagen. Im schmalen Fenster öffnet **Notizbuch** den Inspektor.
 - Projektsuche links; **Suchen** in der Werkzeugleiste markiert oder ersetzt Text, auch über unterschiedliche Textformatierung hinweg. Projektweite Ersetzungen legen vorher Textstände an und werden gemeinsam gespeichert.
+- **Prüfen** in der Werkzeugleiste oder im Notizbuch öffnet die Sprachprüfung. Deutsch für Deutschland, Österreich und die Schweiz ist auswählbar. Die lokale Rechtschreib- und Grammatikprüfung wird mitgeliefert. Markierten Text oder den aktuellen Abschnitt prüfen, einzelne Vorschläge übernehmen oder ignorieren; **Strg+Z** macht Korrekturen rückgängig. Das Projektwörterbuch erlaubt eigene Namen und Begriffe. Automatische Prüfung nach Eingabepause ist optional und ausschließlich lokal.
+- **LanguageTool Premium** wird unter **Prüfen → Prüfverfahren** über E-Mail und Zugriffsschlüssel verbunden. **ChatGPT-Abo · Codex** verwendet die separat installierte Codex CLI, eine eigene Browseranmeldung und die vom Anschluss gemeldete Modellliste. Nach der Browseranmeldung **Status aktualisieren** wählen. Online-Prüfungen werden ausdrücklich gestartet und senden den angezeigten Textumfang an den gewählten Anbieter. Abo-/API-Kontingente gelten weiterhin. Claude-Abos sind nicht angebunden. Einzelheiten und geprüfte Grenzen: [Sprachprüfung](docs/SPRACHPRUEFUNG.md).
 - **Exportieren** wählt Abschnitte, Titel, Autor, Inhaltsverzeichnis, Kommentare, Endnoten und Seitengröße. **Druckvorschau** erstellt ein PDF und öffnet es im zugeordneten PDF-Programm; dort kann gedruckt werden.
 
 ## Speicherung und Wiederherstellung
@@ -61,6 +63,7 @@ Voraussetzungen: Windows x64, .NET SDK aus `global.json`, aktuelles Node.js mit 
 ```powershell
 & .\scripts\build.ps1             # Abhängigkeiten, TypeScript-Prüfung, Debug-Build
 & .\scripts\install-tools.ps1     # Einmalig: geprüfte Konverter
+& .\scripts\install-proofreading.ps1 # Einmalig: lokale Sprachprüfung und portable Java-Laufzeit
 & .\scripts\test.ps1              # JavaScript- und Speicher-/Konverterprüfungen
 npm.cmd run test:ui               # Browserprüfung mit Test-Bridge
 & .\scripts\build.ps1 -Release    # Installer, portables ZIP und SHA-256-Prüfsummen

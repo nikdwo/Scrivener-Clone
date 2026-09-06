@@ -17,6 +17,7 @@ public sealed class MainWindow : Window
 {
     private readonly WebView2 web = new();
     private readonly ConversionService converter;
+    private readonly ProofreadingService proof;
     private ProjectStore? store;
     private bool allowClose;
     private readonly string dataDirectory;
@@ -26,7 +27,7 @@ public sealed class MainWindow : Window
     private const string Assets = "https://assets.schreibatelier.local/";
     private bool integrationTest;
     private bool fileOperation;
-    private const string AppTitle = "Schreibatelier – Alpha 1";
+    private const string AppTitle = "Schreibatelier – Alpha 2";
     private string BackupRoot => Path.Combine(dataDirectory, "Backups");
 
     public MainWindow(string[] args)
@@ -41,6 +42,8 @@ public sealed class MainWindow : Window
         var prefsFile = Path.Combine(dataDirectory, "preferences.json");
         if (File.Exists(prefsFile)) try { preferences = JsonNode.Parse(File.ReadAllText(prefsFile))!.AsObject(); } catch (JsonException) { /* A broken preferences file never prevents opening a project. */ }
         converter = new(FindTools());
+        var bundledProof = Path.Combine(AppContext.BaseDirectory, "Proofreading");
+        proof = new(dataDirectory, Directory.Exists(bundledProof) ? bundledProof : FindTools());
         if (preferences["pandoc"] is JsonValue p) converter.Pandoc = p.GetValue<string>();
         if (preferences["typst"] is JsonValue t) converter.Typst = t.GetValue<string>();
         Title = AppTitle; Width = 1460; Height = 960; MinWidth = 760; MinHeight = 480;
@@ -84,7 +87,7 @@ public sealed class MainWindow : Window
             core.DownloadStarting += (_, e) => e.Cancel = true;
             var file = arguments.FirstOrDefault(x => x.EndsWith(".schreibprojekt", StringComparison.OrdinalIgnoreCase));
             if (file is not null) Switch(integrationTest && !File.Exists(file)
-                ? ProjectStore.Create(file, "Alpha-1-Paketprüfung", BackupRoot)
+                ? ProjectStore.Create(file, "Alpha-2-Paketprüfung", BackupRoot)
                 : new ProjectStore(file, BackupRoot));
             web.Source = new Uri(Origin + "index.html");
         }
@@ -125,7 +128,7 @@ public sealed class MainWindow : Window
     }
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (allowClose) { store?.Dispose(); web.Dispose(); return; }
+        if (allowClose) { proof.Dispose(); store?.Dispose(); web.Dispose(); return; }
         e.Cancel = true; Send(new { type = "command", action = "close" });
     }
     private static string Str(JsonObject a, string key) => a[key]?.GetValue<string>() ?? "";
@@ -168,6 +171,14 @@ public sealed class MainWindow : Window
     {
         switch (action)
         {
+            case "proofStatus": return proof.Status();
+            case "proofCheck": return await proof.Check(a);
+            case "proofCancel": proof.Cancel(); return true;
+            case "proofPremiumConnect": await proof.ConnectPremium(Str(a, "username"), Str(a, "key")); return true;
+            case "proofPremiumDisconnect": proof.DisconnectPremium(); return true;
+            case "proofCodexStatus": return await proof.CodexStatus();
+            case "proofCodexLogin": return await proof.CodexLogin();
+            case "proofCodexLogout": await proof.CodexLogout(); return true;
             case "new":
                 var create = new SaveFileDialog { Filter = ProjectFilter, FileName = "Mein Manuskript.schreibprojekt", OverwritePrompt = false };
                 if (create.ShowDialog(this) != true) return null;
@@ -254,7 +265,7 @@ public sealed class MainWindow : Window
                 File.WriteAllText(Path.Combine(dataDirectory, "result.json"), a.ToJsonString()); allowClose = true; _ = Dispatcher.BeginInvoke(Close); return null;
             case "integrationCapture":
                 if (!integrationTest) throw new InvalidOperationException("Testbefehl ist deaktiviert.");
-                var phase = Str(a, "phase"); if (phase is not ("editor" or "pdf" or "html")) throw new InvalidDataException();
+                var phase = Str(a, "phase"); if (phase is not ("editor" or "pdf" or "html" or "proof" or "proof-premium" or "proof-chatgpt")) throw new InvalidDataException();
                 using (var capture = File.Create(Path.Combine(dataDirectory, phase + ".png"))) await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, capture);
                 return true;
             default: throw new InvalidDataException("Unbekannter Befehl: " + action);

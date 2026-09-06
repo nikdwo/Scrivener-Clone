@@ -21,11 +21,18 @@ try {
     node scripts/licenses.mjs
     if ($LASTEXITCODE) { throw 'Lizenzinventar fehlgeschlagen' }
     if ($Release) {
+        foreach ($name in @('java','languagetool')) {
+            $folder = Join-Path '.tools' $name
+            if (!(Test-Path -LiteralPath $folder)) { throw 'Bitte scripts/install-proofreading.ps1 ausführen, bevor das Release erstellt wird.' }
+            New-Item -ItemType Directory -Force -Path "$publishDirectory/Proofreading" | Out-Null
+            Copy-Item -LiteralPath $folder -Destination "$publishDirectory/Proofreading" -Recurse -Force
+        }
+        Copy-Item -LiteralPath .tools/proofreading-sources.json -Destination "$publishDirectory/Proofreading/sources.json"
         & (Join-Path $PSScriptRoot 'create-shortcut.ps1')
         Copy-Item -LiteralPath THIRD_PARTY_NOTICES.txt,README.md,LICENSE -Destination $publishDirectory
         New-Item -ItemType Directory -Force -Path "$publishDirectory/docs","$publishDirectory/scripts" | Out-Null
         Copy-Item -Path docs/* -Destination "$publishDirectory/docs" -Recurse -Force
-        Copy-Item -LiteralPath scripts/install-tools.ps1 -Destination "$publishDirectory/scripts"
+        Copy-Item -LiteralPath scripts/install-tools.ps1,scripts/install-proofreading.ps1 -Destination "$publishDirectory/scripts"
         & (Join-Path $PSScriptRoot 'package.ps1') -ApplicationDirectory $publishDirectory
     }
 }

@@ -9,9 +9,9 @@
 AppId={{9E0349A6-29C2-4594-937C-131560CBF1AB}
 AppName=Schreibatelier
 AppVersion={#ReleaseVersion}
-AppVerName=Schreibatelier Alpha 1 ({#ReleaseVersion})
-VersionInfoVersion=0.1.0.1
-VersionInfoDescription=Schreibatelier Alpha 1 Setup
+AppVerName=Schreibatelier Alpha 2 ({#ReleaseVersion})
+VersionInfoVersion=0.1.0.2
+VersionInfoDescription=Schreibatelier Alpha 2 Setup
 AppPublisher=nikdwo
 AppPublisherURL=https://github.com/nikdwo/Scrivener-Clone
 DefaultDirName={localappdata}\Programs\Schreibatelier
@@ -40,8 +40,8 @@ Name: "desktopicon"; Description: "Desktop-Verknüpfung erstellen"; Flags: unche
 Source: "{#AppSource}\*"; DestDir: "{app}"; Excludes: "*.pdb,portable.txt,Data\*,.tools\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Schreibatelier Alpha 1"; Filename: "{app}\Schreibatelier.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\Schreibatelier Alpha 1"; Filename: "{app}\Schreibatelier.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\Schreibatelier Alpha 2"; Filename: "{app}\Schreibatelier.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\Schreibatelier Alpha 2"; Filename: "{app}\Schreibatelier.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Schreibatelier.exe"; Description: "Schreibatelier Alpha 1 starten"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Schreibatelier.exe"; Description: "Schreibatelier Alpha 2 starten"; Flags: nowait postinstall skipifsilent

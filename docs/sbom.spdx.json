@@ -3,12 +3,12 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "Schreibatelier dependencies",
-  "documentNamespace": "https://schreibatelier.invalid/spdx/1d04d55c-e43d-411e-a16a-ccf8d410557c",
+  "documentNamespace": "https://schreibatelier.invalid/spdx/3bf1436f-4f0e-4cf0-bdca-68d95f151464",
   "creationInfo": {
     "creators": [
       "Tool: Schreibatelier license inventory"
     ],
-    "created": "2026-09-06T01:23:28.174Z"
+    "created": "2026-09-06T09:22:01.974Z"
   },
   "packages": [
     {
@@ -1183,6 +1183,40 @@
           "referenceLocator": "pkg:nuget/sqlitepclraw.provider.e_sqlite3@2.1.12"
         }
       ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-69",
+      "name": "LanguageTool",
+      "versionInfo": "6.9-SNAPSHOT-20260905",
+      "downloadLocation": "https://languagetool.org/download/snapshots/LanguageTool-20260905-snapshot.zip",
+      "filesAnalyzed": false,
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "See docs/licenses/languagetool.txt",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:generic/LanguageTool@6.9-SNAPSHOT-20260905"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-70",
+      "name": "Eclipse Temurin JRE",
+      "versionInfo": "21.0.12.1+1",
+      "downloadLocation": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12.1%2B1",
+      "filesAnalyzed": false,
+      "licenseDeclared": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "See docs/licenses/eclipse-temurin-jre.txt",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:generic/Eclipse%20Temurin%20JRE@21.0.12.1%2B1"
+        }
+      ]
     }
   ],
   "relationships": [
@@ -1530,6 +1564,16 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-68"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-69"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-70"
     }
   ]
 }

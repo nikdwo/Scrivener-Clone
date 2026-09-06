@@ -29,6 +29,9 @@ Gelesene Referenzen:
 | TypeScript, esbuild, Playwright | Entwicklung und Tests | Originaltexte und weitere Hinweise im Inventar; Entwicklungswerkzeuge werden nicht als Programme mit der App ausgeliefert |
 | Pandoc 3.11 | Separater Dateikonverter | GPL; Download des unveränderten offiziellen Pakets durch Installationsskript, kein Pandoc-Binary im Anwendungs-ZIP |
 | Typst 0.15.1 | Separater PDF-Satz | Apache-2.0, separat installiertes offizielles Paket, nicht im Anwendungs-ZIP |
+| LanguageTool Snapshot 2026-09-05 | Lokale Sprachprüfung als eigener Prozess | Unverändertes offizielles Paket; COPYING.txt und sämtliche Paketressourcen samt Lizenzhinweisen bleiben unter Proofreading/languagetool erhalten. Herkunft und SHA-256 in scripts/install-proofreading.ps1 |
+| Eclipse Temurin JRE 21.0.12.1+1 | Portable Java-Laufzeit für LanguageTool | Unverändertes offizielles Paket; NOTICE und legal-Verzeichnis bleiben unter Proofreading/java erhalten. Download samt Hersteller-Prüfsumme im Installationsskript fixiert |
+| Codex CLI | Separat installierter Prozess für ChatGPT-Anmeldung und KI-Prüfung | Kein Bestandteil des Anwendungs-ZIP. Eigene Anmeldung der Schreibanwendung; Schnittstellen anhand CLI 0.147.0 geprüft |
 
 Maßgeblich sind die vollständigen Pakettexte in `licenses`, nicht diese Kurzbezeichnungen. Das Inventar umfasst die lokal installierten Pakete einschließlich Entwicklung und heruntergeladener Runtime-Packs; es kann deshalb mehr Komponenten nennen, als im ZIP als Binärdatei vorhanden sind. Abhängige Bestandteile der .NET-Runtime sind in deren originalen Third-Party-Notices dokumentiert.
 

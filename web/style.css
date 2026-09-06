@@ -620,7 +620,78 @@ button.active {
   display:flex;
   border-bottom:1px solid var(--line);
   margin-bottom:22px;
-  gap:15px}
+  gap:12px;
+  flex-wrap:wrap}
+
+#proofPanel select,#proofPanel textarea {
+  width:100%}
+
+#proofPanel .field {
+  margin-bottom:12px}
+
+.proof-option {
+  display:flex;
+  align-items:flex-start;
+  gap:6px;
+  margin:12px 0;
+  font-size:11px}
+
+.proof-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px}
+
+.proof-actions button,#proofAccount button {
+  white-space:normal;
+  font-size:11px;
+  overflow-wrap:anywhere}
+
+#proofStatus {
+  font-size:11px;
+  line-height:1.5}
+
+#proofStatus.error {
+  color:var(--danger)}
+
+.proof-finding {
+  border-top:1px solid var(--line);
+  padding:14px 0;
+  overflow-wrap:anywhere}
+
+.proof-finding p {
+  line-height:1.5;
+  font-size:12px}
+
+.proof-finding small {
+  display:block;
+  margin-top:5px;
+  color:var(--muted)}
+
+.proof-location {
+  text-align:left;
+  white-space:normal;
+  font-weight:600;
+  max-width:100%}
+
+.proof-dictionary {
+  border-top:1px solid var(--line);
+  margin-top:20px;
+  padding-top:14px}
+
+.proof-dictionary summary {
+  cursor:pointer;
+  margin-bottom:14px}
+
+.proof-mark {
+  text-decoration:underline wavy var(--warm);
+  text-underline-offset:4px;
+  cursor:pointer}
+
+.proof-spelling {
+  text-decoration-color:var(--danger)}
+
+.proof-style {
+  text-decoration-color:var(--accent)}
 
 .inspector-tabs button {
   border:0;
