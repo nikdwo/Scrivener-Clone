@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+node_modules/
+src/Schreibatelier.App/Web/
+.tools/
+.work/
+artifacts/
+test-results/
+playwright-report/
+*.schreibprojekt
+*.schreibprojekt-*
+*.lockfile
+Schreibatelier starten.lnk

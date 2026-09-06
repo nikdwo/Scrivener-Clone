@@ -1,0 +1,45 @@
+# Validierung 0.1.0
+
+Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Automatische Prüfungen
+
+`tests/Schreibatelier.Checks` prüft die echte SQLite-Speicherung und startet die tatsächlich installierten Konverter. Erfasste Fälle:
+
+- Neueröffnung, Revisionen, atomarer Rollback bei Konflikten, Hierarchie, Papierkorb, Textstände und Wiederherstellung.
+- Zweite Instanz schreibgeschützt, schreibgeschützte Datei, unveränderte Originaldatei bei ungültigem Format, beschädigte Datei und beschädigte Hierarchie.
+- Abgelehnte lokale Bild-/JavaScript-Referenzen und Projektkennungen mit Pfadwechseln.
+- Atomisches Teilen/Zusammenführen, importierte Stapel und gesicherte projektweite Ersetzung.
+- Alle elf Ausgabeformate; Text-Rundläufe für DOCX/RTF/ODT/HTML/Markdown; Fußnoten für DOCX/ODT/Markdown; Endnoten und Kommentar-Anhang in HTML.
+- Bilder in HTML, Markdown, LaTeX, DOCX, ODT, PDF und EPUB; eingebettete Bilder beim DOCX-/ODT-Rundlauf; Begleitbilder bleiben nach Löschen des Konverter-Arbeitsordners vorhanden.
+- Fehlender Konverter und ein als Ausgabeziel ausgewähltes Projekt beschädigen keine vorhandenen Dateien.
+- Fountain-Rundlauf einschließlich Leerzeilen, Leerzeichen, Notizen und Markern für gleichzeitige Dialoge.
+- Eigens gestarteten Schreibprozess während einer offenen SQLite-Transaktion hart beendet: der bestätigte vorherige Text bleibt erhalten, die unbestätigte Transaktion wird beim Wiederöffnen zurückgerollt.
+
+Der Prüfdatensatz mit **1.000 Abschnitten / 500.000 Wörtern** benötigte in einem gemessenen Lauf 361 ms für den transaktionalen Import, 12 ms für die Projektzusammenfassungen und 12 ms für die auf 500 Treffer begrenzte Suche. Das sind Einzelmessungen, keine allgemeine Leistungsgarantie. Der Test prüft außerdem, dass die Projektübersicht keine vollständigen Abschnittstexte mitlädt.
+
+`tests/web.test.mjs` prüft drei zusammengehörige Logikbereiche: Baumreihenfolge/Zyklenschutz, Unicode-Statistik ohne Fußnoten sowie Sammlungen/HTML-Escaping.
+
+`tests/ui/editor.spec.ts` prüft mit einer Test-Bridge in echtem Edge:
+
+1. Schreiben, Formatieren, wiederholtes Speichern, tatsächlich erfolgter Abschnittswechsel und erhaltene Fußnoten.
+2. Speicherfehler: Text bleibt im Editor, Navigation wird blockiert, erneuter Versuch funktioniert.
+3. Eingabe während eines ausstehenden Speichervorgangs wird nicht durch dessen Antwort überschrieben.
+4. Pinnwand, Gliederung, Metadaten, Farbschema und Fokus verwenden dasselbe Projekt.
+5. Screenshots für hell/dunkel/Pinnwand und ein kompaktes Fenster mit 960 × 540 CSS-Pixeln ohne Seitenüberlauf.
+6. Projektweites Ersetzen über unterschiedliche Textformatierung hinweg mit vorherigen Textständen.
+7. Schriftgestaltung, Bearbeiten von Fußnoten und Wiederverwendung einer eigenen Vorlage.
+
+Die Browsertests laufen außerhalb der restriktiven Agent-Sandbox: darin wurden Testprozesse zwar ausgeführt, aber das Beenden des Testservers funktionierte nicht zuverlässig. Die uneingeschränkte Prüfung beendet sich regulär mit dem Testergebnis. Dies betrifft die Testumgebung, nicht eine Administratoranforderung der Anwendung.
+
+## Echte Windows-Anwendung
+
+Der Modus `--integration-test <Testprojekt.schreibprojekt>` startet WPF + WebView2, erstellt einen Testabschnitt, schreibt Rich Text/Fußnote durch die echte Bridge in SQLite und liest ihn erneut aus. Außerdem werden Pinnwand und Rechercheansichten aufgerufen. Er ist nur auf die eigens angelegte Testdatei anzuwenden.
+
+`result.json` und native WebView2-Bildaufnahmen liegen nach dieser Prüfung unter `.work/app-test`. Die PDF-Aufnahme zeigte den integrierten PDF-Betrachter mit tatsächlich gerendertem Inhalt. Die HTML-Aufnahme zeigte den statischen Recherchetext; das absichtlich eingebaute Skript, das den Seiteninhalt ersetzen sollte, wurde nicht ausgeführt. Die helle und dunkle Editoroberfläche wurde visuell geprüft.
+
+## Aussagegrenzen
+
+Die Tests sind kein Ersatz für die Abnahme mit eigenen Manuskripten. Nicht geprüft sind Stromausfall, defekte Hardware, alle Fremddokumentvarianten, sämtliche Windows-Mediencodecs, längere tägliche Nutzung und ein zweiter Rechner. Der Test mit kleinem Fenster ist keine bestätigte Prüfung sämtlicher Windows-DPI-Einstellungen. Das Paket ist nicht signiert; Signatur und Smart-App-Control-Akzeptanz wurden nicht als bestanden behauptet.
+
+Die tatsächlich ausgeführten letzten Prüfungen und Paketprüfsummen werden zusätzlich in `artifacts` abgelegt. Lizenzinventar und Originaltexte sind vorhanden; eine anwaltliche Freigabe wurde nicht durchgeführt.

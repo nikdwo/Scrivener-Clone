@@ -1,0 +1,15 @@
+$ErrorActionPreference = 'Stop'
+$projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$application = Join-Path $projectRoot 'artifacts/Schreibatelier/Schreibatelier.exe'
+if (!(Test-Path -LiteralPath $application -PathType Leaf)) { throw 'Bitte zuerst den Release-Build erstellen: scripts/build.ps1 -Release' }
+$shortcutPath = Join-Path $projectRoot 'Schreibatelier starten.lnk'
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut($shortcutPath)
+$shortcut.TargetPath = $application
+$shortcut.WorkingDirectory = Split-Path -Parent $application
+$shortcut.IconLocation = "$application,0"
+$shortcut.Description = 'Schreibatelier öffnen'
+$shortcut.Save()
+$saved = $shell.CreateShortcut($shortcutPath)
+if ($saved.TargetPath -ne $application -or !(Test-Path -LiteralPath $saved.TargetPath -PathType Leaf)) { throw 'Die Startverknüpfung konnte nicht geprüft werden.' }
+Write-Output 'Schreibatelier starten: Verknüpfung im Projektordner erstellt und geprüft.'
