@@ -27,6 +27,8 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 - Sammlungen wählen Abschnitte manuell oder anhand von Titel/Metadaten. Verwaltung und Hinzufügen stehen im Abschnittsmenü.
 - **Strg+S** speichert sofort. **F11** schaltet den Fokusmodus um, **Escape** beendet ihn. **Zweite Ansicht** öffnet einen Abschnitt oder Anhang zum Nachschlagen. Im schmalen Fenster öffnet **Notizbuch** den Inspektor.
 - Projektsuche links; **Suchen** in der Werkzeugleiste markiert oder ersetzt Text, auch über unterschiedliche Textformatierung hinweg. Projektweite Ersetzungen legen vorher Textstände an und werden gemeinsam gespeichert.
+- **Prüfen** in der Werkzeugleiste oder im Notizbuch öffnet die Sprachprüfung. Deutsch für Deutschland, Österreich und die Schweiz ist auswählbar. Die lokale Rechtschreib- und Grammatikprüfung wird mitgeliefert. Markierten Text oder den aktuellen Abschnitt prüfen, einzelne Vorschläge übernehmen oder ignorieren; **Strg+Z** macht Korrekturen rückgängig. Das Projektwörterbuch erlaubt eigene Namen und Begriffe. Automatische Prüfung nach Eingabepause ist optional und ausschließlich lokal.
+- **LanguageTool Premium** wird unter **Prüfen → Prüfverfahren** über E-Mail und Zugriffsschlüssel verbunden. **ChatGPT-Abo · Codex** verwendet die separat installierte Codex CLI, eine eigene Browseranmeldung und die vom Anschluss gemeldete Modellliste. Nach der Browseranmeldung **Status aktualisieren** wählen. Online-Prüfungen werden ausdrücklich gestartet und senden den angezeigten Textumfang an den gewählten Anbieter. Abo-/API-Kontingente gelten weiterhin. Claude-Abos sind nicht angebunden. Einzelheiten und geprüfte Grenzen: [Sprachprüfung](docs/SPRACHPRUEFUNG.md).
 - **Exportieren** wählt Abschnitte, Titel, Autor, Inhaltsverzeichnis, Kommentare, Endnoten und Seitengröße. **Druckvorschau** erstellt ein PDF und öffnet es im zugeordneten PDF-Programm; dort kann gedruckt werden.
 
 ## Speicherung und Wiederherstellung
@@ -48,6 +50,7 @@ Voraussetzungen: Windows x64, .NET SDK aus `global.json`, aktuelles Node.js mit 
 ```powershell
 & .\scripts\build.ps1             # Abhängigkeiten, TypeScript-Prüfung, Debug-Build
 & .\scripts\install-tools.ps1     # Einmalig: geprüfte Konverter
+& .\scripts\install-proofreading.ps1 # Einmalig: lokale Sprachprüfung und portable Java-Laufzeit
 & .\scripts\test.ps1              # JavaScript- und Speicher-/Konverterprüfungen
 npm.cmd run test:ui               # Browserprüfung mit Test-Bridge
 & .\scripts\build.ps1 -Release    # Eigenständiges Windows-Paket und ZIP

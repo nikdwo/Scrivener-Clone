@@ -37,8 +37,17 @@ for(const packageName of await fs.readdir(nugetRoot)) {
   sections.push(`${packageName} ${version}\nLicense: ${license}\nSource: ${source}\n${text}`);
  }
 }
-await fs.writeFile('THIRD_PARTY_NOTICES.txt',sections.join('\n\n'+'='.repeat(78)+'\n\n'));
+for(const component of [
+ {name:'LanguageTool',version:'6.9-SNAPSHOT-20260905',folder:'.tools/languagetool/LanguageTool-6.9-SNAPSHOT',notice:'COPYING.txt',license:'LGPL-2.1-or-later',source:'https://languagetool.org/download/snapshots/LanguageTool-20260905-snapshot.zip'},
+ {name:'Eclipse Temurin JRE',version:'21.0.12.1+1',folder:'.tools/java/jdk-21.0.12.1+1-jre',notice:'NOTICE',license:'GPL-2.0-only WITH Classpath-exception-2.0',source:'https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12.1%2B1'}
+]) {
+ const notice=await fs.readFile(path.join(component.folder,component.notice),'utf8');
+ const filename=component.name.replaceAll(' ','-').toLowerCase()+'.txt';await fs.writeFile(path.join(target,filename),notice);
+ inventory.push({ecosystem:'generic',name:component.name,version:component.version,license:component.license,scope:'application',source:component.source,notice:'docs/licenses/'+filename});
+ sections.push(`${component.name} ${component.version}\nSource: ${component.source}\nThe original, unmodified distribution is included under Proofreading. Its complete resource and dependency license notices remain in that folder.\n${notice}`);
+}
+await fs.writeFile('THIRD_PARTY_NOTICES.txt',sections.join('\n\n'+'='.repeat(78)+'\n\n').replace(/[\t ]+$/gm,''));
 await fs.writeFile('docs/components.json',JSON.stringify(inventory,null,2));
-const packages=inventory.map((p,i)=>({SPDXID:'SPDXRef-Package-'+i,name:p.name,versionInfo:p.version,downloadLocation:p.source||'NOASSERTION',filesAnalyzed:false,licenseDeclared:p.license,licenseConcluded:'NOASSERTION',copyrightText:'See '+p.notice,externalRefs:[{referenceCategory:'PACKAGE-MANAGER',referenceType:'purl',referenceLocator:`pkg:${p.ecosystem}/${p.name.replace('@','%40')}@${p.version}`}]}));
+const packages=inventory.map((p,i)=>({SPDXID:'SPDXRef-Package-'+i,name:p.name,versionInfo:p.version,downloadLocation:p.source||'NOASSERTION',filesAnalyzed:false,licenseDeclared:p.license,licenseConcluded:'NOASSERTION',copyrightText:'See '+p.notice,externalRefs:[{referenceCategory:'PACKAGE-MANAGER',referenceType:'purl',referenceLocator:`pkg:${p.ecosystem}/${p.name.replace('@','%40').replaceAll(' ','%20')}@${encodeURIComponent(p.version)}`}]}));
 await fs.writeFile('docs/sbom.spdx.json',JSON.stringify({spdxVersion:'SPDX-2.3',dataLicense:'CC0-1.0',SPDXID:'SPDXRef-DOCUMENT',name:'Schreibatelier dependencies',documentNamespace:'https://schreibatelier.invalid/spdx/'+crypto.randomUUID(),creationInfo:{creators:['Tool: Schreibatelier license inventory'],created:new Date().toISOString()},packages,relationships:packages.map(p=>({spdxElementId:'SPDXRef-DOCUMENT',relationshipType:'DESCRIBES',relatedSpdxElement:p.SPDXID}))},null,2));
 console.log(`${inventory.length} components: license identifiers and original notices verified.`);

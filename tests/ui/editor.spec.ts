@@ -6,13 +6,22 @@ test.beforeEach(async({page})=>{
     const docs:any[]=[{id:'manuscript',title:'Manuskript',parentId:null,position:0,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'research',title:'Recherche',parentId:null,position:1,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'chapter',title:'Kapitel 1 · Ankunft',parentId:'manuscript',position:0,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'scene',title:'Das Haus am See',parentId:'chapter',position:0,kind:'text',body:body('Der Morgen lag still über dem See. Mara blieb am Gartentor stehen. In ihrer Manteltasche lag der Schlüssel.'),meta:{synopsis:'Mara kehrt an den Ort ihrer Kindheit zurück. Ein alter Schlüssel führt sie zu einer offenen Frage.',status:'Entwurf',tags:'Mara, Heimkehr',color:'#b77d4e'},revision:0,words:21},{id:'scene2',title:'Ein unerwarteter Brief',parentId:'chapter',position:1,kind:'text',body:body('Auf dem Küchentisch lag ein Umschlag.'),meta:{synopsis:'Ein Brief verändert alles.',status:'Idee'},revision:0,words:6}];
     const project:any={id:'test',title:'Ein neuer Morgen',settings:{wordTarget:80000},documents:docs,readOnly:false,filePath:'test.schreibprojekt'};
     const listeners:Function[]=[];const snapshots:any[]=[];const clone=(x:any)=>JSON.parse(JSON.stringify(x));
-    (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots};
+    (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots,proofDelay:0,proofCalls:[],premiumConnected:false};
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
       try{
         let result:any=null;
         if(action==='ready')result={project:clone(project),tools:{},preferences:JSON.parse(sessionStorage.getItem('testPreferences')??'{}')};
         else if(action==='preferences')sessionStorage.setItem('testPreferences',JSON.stringify(args));
+        else if(action==='proofStatus')result={localAvailable:true,premiumConnected:(window as any).__test.premiumConnected};
+        else if(action==='proofCodexStatus')result={connected:true,email:'test@example.invalid',plan:'plus',models:[{id:'test-model',name:'Testmodell'}]};
+        else if(action==='proofPremiumConnect'){(window as any).__test.premiumConnected=true;result=true}
+        else if(action==='proofPremiumDisconnect'){(window as any).__test.premiumConnected=false;result=true}
+        else if(action==='proofCheck'){
+          (window as any).__test.proofCalls.push(clone(args));await new Promise(r=>setTimeout(r,(window as any).__test.proofDelay));
+          result={issues:args.blocks.flatMap((b:any)=>[['Feler','Fehler'],['Gramatik','Grammatik'],['Mara','Maria']].flatMap(([original,replacement])=>{const offset=b.text.indexOf(original);return offset<0?[]:[{block:b.id,offset,length:original.length,original,replacements:[replacement],message:'Bitte Schreibweise prüfen.',category:'spelling',rule:'TEST'}]}))};
+        }
         else if(action==='state')result=clone(project);
+        else if(action==='open')result=clone(project);
         else if(action==='document')result=clone(docs.find(d=>d.id===args.id));
         else if(action==='save'||action==='replace'){await new Promise(r=>setTimeout(r,(window as any).__test.saveDelay));if((window as any).__test.failSave)throw new Error('Datenträger ist schreibgeschützt.');result=args.documents.map((d:any)=>{const old=docs.find(x=>x.id===d.id);if(old.revision!==d.revision)throw new Error('Versionskonflikt');if(action==='replace')snapshots.push({...clone(old),documentId:old.id,title:'Vor Suchen und Ersetzen'});Object.assign(old,clone(d),{revision:d.revision+1});return clone(old)})}
         else if(action==='create'){const d={id:crypto.randomUUID(),parentId:args.parent,title:args.title,kind:args.kind,body:args.body??body(''),meta:args.meta??{},position:docs.filter(x=>x.parentId===args.parent).length,revision:0,words:0};docs.push(d);result=clone(d)}
@@ -126,4 +135,74 @@ test('typography, editable footnotes and reusable custom templates',async({page}
   await page.locator('[data-inspector="notes"]').click();await page.locator('[data-note-id]').click();await page.locator('#noteText').fill('Überarbeitet');await page.locator('#dialogSubmit').click();await expect(page.locator('.footnote')).toHaveAttribute('data-note','Überarbeitet');
   await page.locator('[data-action="documentMenu"]').click();await page.locator('[data-menu-action="saveTemplate"]').click();await page.locator('#value').fill('Meine Szene');await page.locator('#dialogSubmit').click();
   await page.locator('[data-action="templates"]').click();await page.locator('#template').selectOption('custom-0');await page.locator('#dialogSubmit').click();await page.locator('#value').fill('Aus eigener Vorlage');await page.locator('#dialogSubmit').click();await expect(page.locator('#documentTitle')).toHaveValue('Aus eigener Vorlage');await expect(page.locator('.footnote')).toHaveAttribute('data-note','Überarbeitet');
+});
+
+test('proofreading marks exact text, preserves formatting and footnotes, and supports undo',async({page})=>{
+  await page.evaluate(()=>{(window as any).__test.docs.find((d:any)=>d.id==='scene').body=JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'😀 Ein '},{type:'text',text:'Feler',marks:[{type:'bold'}]},{type:'footnote',attrs:{id:'proof-note',text:'Feler in der Fußnote bleibt erhalten.'}},{type:'text',text:' bleibt.'}]},{type:'paragraph',content:[{type:'text',text:'Gramatik',marks:[{type:'italic'}]}]}]})});
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await page.locator('#proofRun').click();
+  await expect(page.locator('.proof-finding')).toHaveCount(2);await expect(page.locator('.proof-mark').first()).toHaveText('Feler');
+  await page.locator('[data-finding="0"] [data-proof-action="replace"]').click();
+  await expect(page.locator('.editor-sheet strong')).toHaveText('Fehler');await expect(page.locator('.editor-sheet em')).toHaveText('Gramatik');
+  await expect(page.locator('.footnote')).toHaveAttribute('data-note','Feler in der Fußnote bleibt erhalten.');
+  await page.keyboard.press('Control+z');await expect(page.locator('.editor-sheet strong')).toHaveText('Feler');
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(2);
+  await page.locator('[data-finding="1"] [data-proof-action="replace"]').click();await expect(page.locator('.editor-sheet em')).toHaveText('Grammatik');
+  await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
+  await page.locator('[data-doc="scene2"]').click();await page.locator('[data-doc="scene"]').click();await expect(page.locator('.editor-sheet em')).toHaveText('Grammatik');await expect(page.locator('.footnote')).toHaveCount(1);
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);await page.screenshot({path:'artifacts/screenshots/proofreading.png'});
+});
+
+test('proofreading discards stale results and project dictionary suppresses only allowed words',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();
+  await page.evaluate(()=>{(window as any).__test.proofDelay=400});await page.locator('#proofRun').click();
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Neu.');
+  await expect(page.locator('#proofStatus')).toContainText('Ergebnisse verworfen');await expect(page.locator('.proof-finding')).toHaveCount(0);
+  await page.evaluate(()=>{(window as any).__test.proofDelay=0});await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
+  await page.locator('[data-proof-action="allow"]').click();await expect(page.locator('.proof-finding')).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as any).__test.project.settings.proofDictionary)).toEqual(['Mara']);
+  await page.locator('#proofRun').click();await expect(page.locator('#proofStatus')).toContainText('0 Hinweise');
+  await page.locator('[data-doc="scene2"]').click();await page.locator('[data-doc="scene"]').click();await page.locator('#proofRun').click();await expect(page.locator('#proofStatus')).toContainText('0 Hinweise');
+});
+
+test('proofreading sends selected text only on request, uses language and discovered KI model',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();const editor=page.locator('.editor-sheet .tiptap');await editor.click();await page.keyboard.press('Control+a');await page.keyboard.type('Mara sieht einen Feler');
+  await page.keyboard.press('Control+End');for(let i=0;i<5;i++)await page.keyboard.press('Shift+ArrowLeft');
+  await page.locator('[data-action="proof"]').click();await expect(page.locator('#proofRun')).toHaveText('Markierung prüfen');
+  await page.locator('#proofEngine').selectOption('codex');await expect(page.locator('#proofModel')).toHaveValue('test-model');
+  expect(await page.evaluate(()=>(window as any).__test.proofCalls.length)).toBe(0);
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
+  const call=await page.evaluate(()=>(window as any).__test.proofCalls[0]);expect(call.engine).toBe('codex');expect(call.model).toBe('test-model');expect(call.blocks.map((b:any)=>b.text)).toEqual(['Feler']);
+  await page.locator('#proofLanguage').selectOption('de-CH');await expect(page.locator('#proofStatus')).toHaveText('Prüfsprache gespeichert.');
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
+  expect(await page.evaluate(()=>(window as any).__test.proofCalls.at(-1).language)).toBe('de-CH');
+  await page.locator('#proofEngine').selectOption('premium');await page.locator('[data-proof-action="premiumConnect"]').click();
+  await page.locator('#ltEmail').fill('test@example.invalid');await page.locator('#ltKey').fill('test-key');await page.locator('#dialogSubmit').click();
+  await expect(page.locator('#proofAccount')).toContainText('Premium-Zugang gespeichert');await expect(page.locator('#ltKey')).toHaveValue('');
+  await page.locator('[data-proof-action="premiumDisconnect"]').click();await expect(page.locator('#proofAccount')).toContainText('Noch kein Premium-Konto');
+});
+
+test('account dialog can be cancelled with empty or invalid required fields',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await page.locator('#proofEngine').selectOption('premium');
+  const dialog=page.getByRole('dialog');
+  for(const invalid of [false,true])for(const button of ['Abbrechen','Schließen']){
+    await page.locator('[data-proof-action="premiumConnect"]').click();
+    if(invalid){await page.locator('#ltEmail').fill('keine-email');await page.locator('#ltKey').fill('test-key')}
+    await page.locator('#dialogSubmit').click();await expect(dialog).toBeVisible();
+    await dialog.getByRole('button',{name:button,exact:true}).click();await expect(dialog).toBeHidden();
+    await expect(page.locator('#ltKey')).toHaveValue('');expect(await page.evaluate(()=>(window as any).__test.premiumConnected)).toBe(false);
+  }
+});
+
+test('local automatic proofreading never triggers online calls and read-only corrections stay disabled',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await page.locator('#proofAuto').check();
+  const editor=page.locator('.editor-sheet .tiptap');await editor.click();await page.keyboard.press('Control+End');await page.keyboard.type(' Feler');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.proofCalls.length)).toBe(1);await expect(page.locator('.proof-finding')).toHaveCount(2);
+  await page.evaluate(()=>{(window as any).__test.proofDelay=2300});await page.locator('#proofRun').click();
+  await editor.click();await page.keyboard.type(' neu');await page.evaluate(()=>{(window as any).__test.proofDelay=0});
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.proofCalls.length)).toBe(3);await expect(page.locator('.proof-finding')).toHaveCount(2);
+  await page.locator('#proofEngine').selectOption('premium');await editor.click();await page.keyboard.type(' weiter');await page.waitForTimeout(1700);
+  expect(await page.evaluate(()=>(window as any).__test.proofCalls.length)).toBe(3);
+  await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
+  await page.evaluate(()=>{(window as any).__test.project.readOnly=true;document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
+  await page.locator('[data-doc="scene"]').click();await page.locator('#proofRun').click();await expect(page.locator('[data-proof-action="replace"]').first()).toBeDisabled();
 });

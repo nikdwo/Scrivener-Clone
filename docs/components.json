@@ -678,5 +678,23 @@
     "scope": "application",
     "source": "https://github.com/ericsink/SQLitePCL.raw",
     "notice": "docs/licenses/sqlitepclraw.provider.e_sqlite3-2.1.12.txt"
+  },
+  {
+    "ecosystem": "generic",
+    "name": "LanguageTool",
+    "version": "6.9-SNAPSHOT-20260905",
+    "license": "LGPL-2.1-or-later",
+    "scope": "application",
+    "source": "https://languagetool.org/download/snapshots/LanguageTool-20260905-snapshot.zip",
+    "notice": "docs/licenses/languagetool.txt"
+  },
+  {
+    "ecosystem": "generic",
+    "name": "Eclipse Temurin JRE",
+    "version": "21.0.12.1+1",
+    "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+    "scope": "application",
+    "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12.1%2B1",
+    "notice": "docs/licenses/eclipse-temurin-jre.txt"
   }
 ]
