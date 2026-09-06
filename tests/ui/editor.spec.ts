@@ -10,8 +10,18 @@ test.beforeEach(async({page})=>{
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
       try{
         let result:any=null;
-        if(action==='ready')result={project:sessionStorage.getItem('testWelcome')?null:clone(project),recentProjects:JSON.parse(sessionStorage.getItem('testRecentProjects')??'[]'),tools:{},preferences:JSON.parse(sessionStorage.getItem('testPreferences')??'{}')};
+        if(action==='ready')result={project:sessionStorage.getItem('testWelcome')?null:clone(project),recentProjects:JSON.parse(sessionStorage.getItem('testRecentProjects')??'[]'),tools:{},preferences:{checkUpdatesAtStartup:false,...JSON.parse(sessionStorage.getItem('testPreferences')??'{}')},updateInfo:{version:'0.1.0-alpha.2',portable:!!sessionStorage.getItem('testPortable')}};
         else if(action==='preferences')sessionStorage.setItem('testPreferences',JSON.stringify(args));
+        else if(action==='updateCheck'){if((window as any).__test.updateError)throw new Error('GitHub ist gerade nicht erreichbar.');result=(window as any).__test.updateRelease??null}
+        else if(action==='updateDownload'){
+          if((window as any).__test.waitForUpdate)await new Promise<void>(resolve=>{(window as any).__test.cancelUpdate=resolve});
+          if((window as any).__test.cancelledUpdate)throw new Error('Update-Vorgang abgebrochen.');
+          if((window as any).__test.downloadError)throw new Error('SHA-256-Prüfung fehlgeschlagen.');
+          for(const l of listeners)l({data:{type:'updateProgress',percent:100}});result='test.zip';
+        }
+        else if(action==='updateCancel'){(window as any).__test.cancelledUpdate=true;(window as any).__test.cancelUpdate?.()}
+        else if(action==='updateInstall'){(window as any).__test.installedUpdate=true}
+        else if(action==='updateShowFile'){(window as any).__test.openedUpdateFolder=true}
         else if(action==='licenses')result='Schreibatelier – Test-Lizenztext';
         else if(action==='proofStatus')result={localAvailable:true,premiumConnected:(window as any).__test.premiumConnected};
         else if(action==='proofCodexStatus')result={connected:true,email:'test@example.invalid',plan:'plus',models:[{id:'test-model',name:'Testmodell'}]};
@@ -54,6 +64,39 @@ test('welcome lists three recent projects with direct opening and missing-file f
   await page.screenshot({path:'artifacts/recent-projects-compact-dark.png'});
   await page.evaluate(()=>{(window as any).__test.recentError=false});await buttons.last().focus();await page.keyboard.press('Enter');await expect(page.locator('#workspace')).toBeVisible();expect(await page.evaluate(()=>(window as any).__test.openedRecent)).toBe(entries[2].filePath);
   await page.evaluate(()=>sessionStorage.removeItem('testRecentProjects'));await page.reload();await expect(page.locator('#recentProjectsEmpty')).toBeVisible();await expect(buttons).toHaveCount(0);
+});
+
+test('updates verify downloads, retain unsaved text on failure and only install after saving',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();
+  await page.evaluate(()=>{(window as any).__test.updateRelease={version:'0.1.0-alpha.3',notes:'<img src=x onerror=alert(1)> Neue Funktionen',fileName:'Setup.exe',size:300000000};(window as any).__test.failSave=true});
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' UPDATE-TEXT');
+  const open=()=>page.evaluate(()=>(window as any).__test.listeners.forEach((l:Function)=>l({data:{type:'command',action:'updates'}})));
+  await open();const dialog=page.locator('#updateDialog');await expect(dialog).toBeVisible();
+  await expect(page.locator('#updateStatus')).toContainText('alpha.3');await expect(page.locator('#updateNotes img')).toHaveCount(0);
+  await page.evaluate(()=>{(window as any).__test.downloadError=true});await page.locator('#updateDownload').click();
+  await expect(page.locator('#updateStatus')).toContainText('SHA-256');await expect(page.locator('#updateInstall')).toBeHidden();
+  await page.evaluate(()=>{(window as any).__test.downloadError=false});await page.locator('#updateDownload').click();await expect(page.locator('#updateInstall')).toBeVisible();
+  await page.locator('#updateInstall').click();await expect(page.locator('#updateStatus')).toContainText('schreibgeschützt');
+  expect(await page.evaluate(()=>(window as any).__test.installedUpdate)).toBeUndefined();await expect(dialog).toBeVisible();
+  await page.evaluate(()=>{(window as any).__test.failSave=false});await page.locator('#updateInstall').click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.installedUpdate)).toBe(true);
+  expect(await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body)).toContain('UPDATE-TEXT');
+  await page.screenshot({path:'artifacts/update-dialog.png'});
+});
+
+test('portable updates work on welcome, report network errors and cancel downloads',async({page})=>{
+  await page.evaluate(()=>{sessionStorage.setItem('testWelcome','true');sessionStorage.setItem('testPortable','true')});await page.reload();
+  const open=()=>page.evaluate(()=>(window as any).__test.listeners.forEach((l:Function)=>l({data:{type:'command',action:'updates'}})));
+  await page.evaluate(()=>{(window as any).__test.updateError=true});await open();await expect(page.locator('#updateStatus')).toContainText('nicht erreichbar');
+  await page.evaluate(()=>{(window as any).__test.updateError=false});await page.locator('#updateCheck').click();await expect(page.locator('#updateStatus')).toContainText('Keine neuere');
+  await page.evaluate(()=>{(window as any).__test.updateRelease={version:'0.1.0-alpha.3',notes:'Portable Aktualisierung',size:320000000};(window as any).__test.waitForUpdate=true});
+  await page.locator('#updateCheck').click();await page.locator('#updateDownload').click();await expect(page.locator('#updateClose')).toHaveText('Abbrechen');
+  await page.locator('#updateClose').click();await expect(page.locator('#updateDialog')).toBeHidden();await expect(page.locator('#updateDownload')).toBeEnabled();
+  await page.evaluate(()=>{(window as any).__test.waitForUpdate=false;(window as any).__test.cancelledUpdate=false});await open();await page.locator('#updateDownload').click();
+  await expect(page.locator('#updateStatus')).toContainText('erfolgreich');await expect(page.locator('#updateInstall')).toBeHidden();await expect(page.locator('#updateInstructions')).toContainText('Data');
+  await page.locator('#updateShow').click();expect(await page.evaluate(()=>(window as any).__test.openedUpdateFolder)).toBe(true);
+  await page.locator('#updateAuto').check();expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('testPreferences')!).checkUpdatesAtStartup)).toBe(true);
+  await page.locator('#updateClose').click();await expect(page.locator('#welcome')).toBeVisible();
 });
 
 test('write, format, save, reopen and preserve footnotes',async({page})=>{

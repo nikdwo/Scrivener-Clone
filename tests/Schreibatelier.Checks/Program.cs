@@ -14,6 +14,7 @@ if (args.FirstOrDefault() == "--crash-writer")
 }
 
 var workspace = args.FirstOrDefault() ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
+if (args.Contains("--updates")) { await UpdateChecks.Run(workspace, args.Contains("--live")); return; }
 var root = Path.Combine(workspace, ".work", "checks", Model.Id()); Directory.CreateDirectory(root);
 var passed = 0;
 void Check(bool condition, string label) { if (!condition) throw new Exception("FAILED: " + label); passed++; Console.WriteLine("PASS " + label); }

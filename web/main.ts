@@ -11,6 +11,7 @@ import DOMPurify from 'dompurify';
 import { diffWords } from 'diff';
 import { EditorState } from '@tiptap/pm/state';
 import { Proofreading } from './proofreading';
+import { Updates } from './updates';
 import { escapeHtml as h, orderedDocuments, plainText, wordCount, matchesCollection } from './logic.mjs';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -24,6 +25,7 @@ function rpc(action: string, args: any = {}): Promise<any> {
 webview?.addEventListener('message', (event: any) => {
   const m = event.data;
   if (m.type === 'command') { void perform(m.action); return; }
+  if (m.type === 'updateProgress') { updates.progress(m.percent); return; }
   const p = pending.get(m.id); if (!p) return; pending.delete(m.id);
   m.ok ? p.resolve(m.result) : p.reject(new Error(m.error));
 });
@@ -36,6 +38,7 @@ let selectionRequest = 0, renderRequest = 0;
 const cache = new Map<string,any>(), dirty = new Map<string,number>(), collapsed = new Set<string>();
 const emptyBody = JSON.stringify({type:'doc',content:[{type:'paragraph'}]});
 const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,saveSettings:saveProjectSettings,modal});
+const updates=new Updates(rpc,flush,async enabled=>{const previous=preferences.checkUpdatesAtStartup;preferences.checkUpdatesAtStartup=enabled;try{await rpc('preferences',preferences)}catch(e){preferences.checkUpdatesAtStartup=previous;throw e}});
 
 function toast(text: string, error = false) { $('toast').textContent=text; $('toast').classList.remove('hidden'); $('toast').classList.toggle('error',error); if (!error) setTimeout(()=>{$('toast').classList.add('hidden')},5000); }
 function state(text: string, error = false) { $('saveState').textContent=text; $('saveState').classList.toggle('error',error); }
@@ -265,6 +268,7 @@ async function output(preview=false) {
 }
 
 const actions:Record<string,()=>any>={
+  updates:()=>updates.check(),
   new:async()=>{await flush();await adopt(await rpc('new'))},open:async()=>{await flush();await adopt(await rpc('open'))},save:async()=>{await flush();toast('Alle Änderungen sind gespeichert.')},
   moreSections:async()=>{await flush();combinedLimit+=30;await renderView()},
   inspectorToggle:()=>document.body.classList.toggle('inspector-visible'),
@@ -378,4 +382,4 @@ async function integrationCheck() {
     }
     for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
 }
-void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});
+void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.updateInfo){updates.configure(result.updateInfo,preferences.checkUpdatesAtStartup!==false);if(!result.integrationTest&&preferences.checkUpdatesAtStartup!==false)void updates.check(true)}if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});

@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -19,8 +21,10 @@ public sealed class MainWindow : Window
     private readonly ConversionService converter;
     private readonly ProofreadingService proof;
     private readonly RecentProjects recentProjects;
+    private readonly GitHubUpdates updates;
     private ProjectStore? store;
     private bool allowClose;
+    private bool closed;
     private readonly string dataDirectory;
     private readonly string[] arguments;
     private JsonObject preferences = new();
@@ -41,6 +45,9 @@ public sealed class MainWindow : Window
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Schreibatelier");
         Directory.CreateDirectory(dataDirectory);
         recentProjects = new(dataDirectory);
+        updates = new(new HttpClient { Timeout = Timeout.InfiniteTimeSpan }, dataDirectory,
+            typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion,
+            File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.txt")));
         var prefsFile = Path.Combine(dataDirectory, "preferences.json");
         if (File.Exists(prefsFile)) try { preferences = JsonNode.Parse(File.ReadAllText(prefsFile))!.AsObject(); } catch (JsonException) { /* A broken preferences file never prevents opening a project. */ }
         converter = new(FindTools());
@@ -54,7 +61,7 @@ public sealed class MainWindow : Window
         foreach (var (title, entries) in new[] {
             ("_Datei", new[] { ("_Neues Projekt", "new"), ("_Öffnen …", "open"), ("_Speichern", "save"), ("Kopie speichern …", "saveCopy"), ("_Importieren …", "import"), ("_Exportieren …", "export"), ("Sicherung erstellen", "backup"), ("Sicherung wiederherstellen …", "restoreBackup"), ("_Beenden", "close") }),
             ("_Ansicht", new[] { ("Schreiben", "write"), ("Pinnwand", "board"), ("Gliederung", "outline"), ("Fokusmodus", "focus"), ("Farbschema wechseln", "theme") }),
-            ("_Hilfe", new[] { ("Kurzanleitung", "help"), ("Einstellungen", "settings"), ("Lizenzen", "licenses") }) })
+            ("_Hilfe", new[] { ("Kurzanleitung", "help"), ("Einstellungen", "settings"), ("Nach Updates suchen …", "updates"), ("Lizenzen", "licenses") }) })
         {
             var group = new MenuItem { Header = title }; foreach (var (label, action) in entries) { var item = new MenuItem { Header = label }; item.Click += (_, _) => Send(new { type = "command", action }); group.Items.Add(item); }
             menu.Items.Add(group);
@@ -120,7 +127,7 @@ public sealed class MainWindow : Window
         }
         e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(new MemoryStream(), 403, "Forbidden", "Content-Type: text/plain");
     }
-    private void Send(object data) { if (web.CoreWebView2 is not null) web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(data, Model.Json)); }
+    private void Send(object data) { if (!closed && web.CoreWebView2 is not null) web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(data, Model.Json)); }
     private ProjectStore Store => store ?? throw new InvalidOperationException("Bitte zuerst ein Projekt öffnen.");
     private void Switch(ProjectStore next)
     {
@@ -132,7 +139,7 @@ public sealed class MainWindow : Window
     }
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (allowClose) { proof.Dispose(); store?.Dispose(); web.Dispose(); return; }
+        if (allowClose) { closed = true; updates.Dispose(); proof.Dispose(); store?.Dispose(); web.Dispose(); return; }
         e.Cancel = true; Send(new { type = "command", action = "close" });
     }
     private static string Str(JsonObject a, string key) => a[key]?.GetValue<string>() ?? "";
@@ -146,14 +153,14 @@ public sealed class MainWindow : Window
         {
             if (e.WebMessageAsJson.Length > 40_000_000) throw new InvalidDataException("Nachricht ist zu groß.");
             var message = JsonNode.Parse(e.WebMessageAsJson)!.AsObject(); id = Str(message, "id"); var action = Str(message, "action"); var a = message["args"]?.AsObject() ?? new();
-            if (action is "new" or "open" or "openRecent" or "close" or "import" or "export" or "preview" or "restoreBackup" or "attach")
+            if (action is "new" or "open" or "openRecent" or "close" or "import" or "export" or "preview" or "restoreBackup" or "attach" or "updateInstall")
             {
                 if (fileOperation) throw new InvalidOperationException("Bitte den laufenden Dateivorgang abschließen lassen.");
                 fileOperation = acquired = true;
             }
             object? result = action switch
             {
-                "ready" => new { project = store?.GetProject(), recentProjects = recentProjects.Read(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, storageDirectory = dataDirectory },
+                "ready" => new { project = store?.GetProject(), recentProjects = recentProjects.Read(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, storageDirectory = dataDirectory, updateInfo = new { version = updates.CurrentVersion, portable = updates.Portable } },
                 "state" => Store.GetProject(),
                 "document" => Store.GetDocument(Str(a, "id")),
                 "save" => Store.SaveDocuments(a["documents"]!.Deserialize<DocumentInfo[]>(Model.Json)!),
@@ -175,6 +182,20 @@ public sealed class MainWindow : Window
     {
         switch (action)
         {
+            case "updateCheck": return await updates.Check();
+            case "updateDownload": return await updates.Download(percent => Send(new { type = "updateProgress", percent }));
+            case "updateCancel": updates.Cancel(); return true;
+            case "updateInstall":
+                if (updates.Portable) throw new InvalidOperationException("Bitte das portable ZIP im Downloadordner verwenden.");
+                if (integrationTest) throw new InvalidOperationException("Installer werden im Integrationstest nicht gestartet.");
+                if (store is not null && !store.ReadOnly) store.Backup();
+                using (var installer = updates.OpenVerifiedDownload())
+                    Process.Start(new ProcessStartInfo(installer.Name) { UseShellExecute = true });
+                allowClose = true; _ = Dispatcher.BeginInvoke(Close); return true;
+            case "updateShowFile":
+                using (var package = updates.OpenVerifiedDownload())
+                    Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + package.Name + "\"") { UseShellExecute = true });
+                return true;
             case "proofStatus": return proof.Status();
             case "proofCheck": return await proof.Check(a);
             case "proofCancel": proof.Cancel(); return true;

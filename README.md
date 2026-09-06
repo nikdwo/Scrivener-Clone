@@ -15,6 +15,16 @@ Im portablen Modus liegen Einstellungen, automatische Sicherungen, Vorschauen un
 
 Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 2](docs/RELEASE-ALPHA-2.md).
 
+## Updates über GitHub
+
+Unter **Hilfe → Nach Updates suchen …** prüft die Anwendung die [öffentlichen Downloads](https://github.com/nikdwo/Schreibatelier-Releases/releases). Eine GitHub-Anmeldung und ein eigener Server sind dafür nicht nötig; der Quellcode bleibt im privaten Repository. Die Prüfung beim Programmstart ist standardmäßig eingeschaltet und lässt sich im Updatefenster deaktivieren. Es werden keine Manuskripttexte übertragen. Ohne Internet kann normal weitergeschrieben werden.
+
+Eine neue Versionsnummer muss als GitHub **Release** mit passenden Windows-Dateien veröffentlicht sein; ein Push auf `main` oder `testing` genügt nicht. Alpha-/Beta-Installationen berücksichtigen Vorabversionen; stabile Installationen erhalten nur stabile Releases. Download und Installation erfolgen erst nach Klick. Der Download wird auf Größe und SHA-256 geprüft. Das ist eine Integritätsprüfung, keine Herausgebersignatur.
+
+Bei der installierten Variante speichert und sichert **Speichern und Installer starten** das offene Projekt, startet den vorhandenen Windows-Installer und schließt Schreibatelier. Bei einem Speicherfehler bleibt die Anwendung offen. Bei der portablen Variante **Downloadordner öffnen**, die Anwendung schließen und das ZIP in den bisherigen Programmordner entpacken; Programmdateien ersetzen und `Data` sowie eigene Projekte beibehalten. Bei einem neuen Zielordner den bisherigen `Data`-Ordner bei geschlossener Anwendung mitkopieren. Der portable Austausch erfolgt manuell.
+
+Für künftige Veröffentlichungen zuerst eine höhere Versionsnummer in Anwendung und Paketierung setzen, die Pakete prüfen und das Quellrelease veröffentlichen. Danach `./scripts/publish-updates.ps1 -Version '0.1.0-alpha.3'` mit der tatsächlich veröffentlichten Version ausführen. Das Skript überträgt ausschließlich Installer, ZIP und Prüfsummen aus dem bestehenden Quellrelease; kein Quellcode wird veröffentlicht. Bereits veröffentlichte Dateien werden nicht überschrieben. Die bisherigen Alpha-2-Pakete erhalten die Updatefunktion erst durch einen neu gebauten Installer bzw. Programmordner; sie lässt sich nicht rückwirkend in bereits installierte Programme einfügen.
+
 ## Aus dem Quellprojekt starten
 
 **Im Projektordner einfach „Schreibatelier starten“ doppelklicken.** Die Windows-Verknüpfung öffnet die fertige Anwendung. Jeder Release-Build erstellt bzw. aktualisiert sie automatisch; nach dem Verschieben des Quellprojektordners lässt sie sich mit `scripts/create-shortcut.ps1` neu erzeugen.
