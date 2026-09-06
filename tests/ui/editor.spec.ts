@@ -6,12 +6,13 @@ test.beforeEach(async({page})=>{
     const docs:any[]=[{id:'manuscript',title:'Manuskript',parentId:null,position:0,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'research',title:'Recherche',parentId:null,position:1,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'chapter',title:'Kapitel 1 · Ankunft',parentId:'manuscript',position:0,kind:'folder',body:body(''),meta:{},revision:0,words:0},{id:'scene',title:'Das Haus am See',parentId:'chapter',position:0,kind:'text',body:body('Der Morgen lag still über dem See. Mara blieb am Gartentor stehen. In ihrer Manteltasche lag der Schlüssel.'),meta:{synopsis:'Mara kehrt an den Ort ihrer Kindheit zurück. Ein alter Schlüssel führt sie zu einer offenen Frage.',status:'Entwurf',tags:'Mara, Heimkehr',color:'#b77d4e'},revision:0,words:21},{id:'scene2',title:'Ein unerwarteter Brief',parentId:'chapter',position:1,kind:'text',body:body('Auf dem Küchentisch lag ein Umschlag.'),meta:{synopsis:'Ein Brief verändert alles.',status:'Idee'},revision:0,words:6}];
     const project:any={id:'test',title:'Ein neuer Morgen',settings:{wordTarget:80000},documents:docs,readOnly:false,filePath:'test.schreibprojekt'};
     const listeners:Function[]=[];const snapshots:any[]=[];const clone=(x:any)=>JSON.parse(JSON.stringify(x));
-    (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots,proofDelay:0,proofCalls:[],premiumConnected:false};
+    (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots,proofDelay:0,proofCalls:[],premiumConnected:false,listeners};
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
       try{
         let result:any=null;
         if(action==='ready')result={project:clone(project),tools:{},preferences:JSON.parse(sessionStorage.getItem('testPreferences')??'{}')};
         else if(action==='preferences')sessionStorage.setItem('testPreferences',JSON.stringify(args));
+        else if(action==='licenses')result='Schreibatelier – Test-Lizenztext';
         else if(action==='proofStatus')result={localAvailable:true,premiumConnected:(window as any).__test.premiumConnected};
         else if(action==='proofCodexStatus')result={connected:true,email:'test@example.invalid',plan:'plus',models:[{id:'test-model',name:'Testmodell'}]};
         else if(action==='proofPremiumConnect'){(window as any).__test.premiumConnected=true;result=true}
@@ -190,6 +191,19 @@ test('account dialog can be cancelled with empty or invalid required fields',asy
     await page.locator('#dialogSubmit').click();await expect(dialog).toBeVisible();
     await dialog.getByRole('button',{name:button,exact:true}).click();await expect(dialog).toBeHidden();
     await expect(page.locator('#ltKey')).toHaveValue('');expect(await page.evaluate(()=>(window as any).__test.premiumConnected)).toBe(false);
+  }
+});
+
+test('help and licenses have one close action, editable dialogs retain cancel',async({page})=>{
+  const dialog=page.getByRole('dialog');
+  for(const action of ['help','licenses']){
+    await page.evaluate(action=>(window as any).__test.listeners.forEach((listener:Function)=>listener({data:{type:'command',action}})),action);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.dialog-actions button:visible')).toHaveText(['Schließen']);
+    await dialog.locator('#dialogSubmit').click();await expect(dialog).toBeHidden();
+    await page.locator('[data-action="settings"]').click();
+    await expect(dialog.locator('.dialog-actions button:visible')).toHaveText(['Abbrechen','Übernehmen']);
+    await dialog.getByRole('button',{name:'Abbrechen',exact:true}).click();await expect(dialog).toBeHidden();
   }
 });
 
