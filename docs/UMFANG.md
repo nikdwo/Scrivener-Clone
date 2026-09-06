@@ -1,4 +1,4 @@
-# Funktionsabdeckung 0.1.0
+# Funktionsabdeckung – Alpha 1 (0.1.0-alpha.1)
 
 Stand: 5. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
 
@@ -34,7 +34,7 @@ Stand: 5. September 2026. Diese Datei beschreibt implementiertes Verhalten und s
 
 Markdown- und LaTeX-Bilder liegen nach Export in einem mit ausgegebenen `Schreibatelier-assets-…`-Nachbarordner. Dieser gehört zur Ausgabe. Ein Import verändert die Originaldatei nicht und weist auf verworfene Elemente hin. Layout, individuelle Office-Vorlagen, spezielle Tabellenformatierung, Änderungen/Kommentare fremder Office-Dateien und beliebige nicht unterstützte Dokumentelemente können abweichen oder entfallen.
 
-Nicht enthalten: Legacy `.doc`, FDX, direkte Scrivener-Dateiformate, mobile Apps, Synchronisationsdienst, öffentlicher Installer, Authenticode-Signatur und automatischer Updater. Das gebaute Paket ist eine lokale Windows-x64-Version; ein Laufzeittest auf einem zweiten Rechner ist noch nicht erfolgt.
+Nicht enthalten: Legacy `.doc`, FDX, direkte Scrivener-Dateiformate, mobile Apps, Synchronisationsdienst, Authenticode-Signatur und automatischer Updater. Das gebaute Paket ist eine lokale Windows-x64-Version; ein Laufzeittest auf einem zweiten Rechner ist noch nicht erfolgt.
 
 ## Größen und Datenverhalten
 

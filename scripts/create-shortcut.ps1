@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$application = Join-Path $projectRoot 'artifacts/Schreibatelier/Schreibatelier.exe'
+$version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version
+$application = Join-Path $projectRoot "artifacts/Schreibatelier-$version/app/Schreibatelier.exe"
 if (!(Test-Path -LiteralPath $application -PathType Leaf)) { throw 'Bitte zuerst den Release-Build erstellen: scripts/build.ps1 -Release' }
 $shortcutPath = Join-Path $projectRoot 'Schreibatelier starten.lnk'
 $shell = New-Object -ComObject WScript.Shell

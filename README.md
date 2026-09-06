@@ -1,12 +1,25 @@
-# Schreibatelier
+# Schreibatelier – Alpha 1
 
-Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. Version 0.1.0, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
+Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 1 (`0.1.0-alpha.1`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
 
-## Starten
+## Alpha 1 herunterladen und starten
+
+**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Scrivener-Clone/releases/tag/v0.1.0-alpha.1) sind als Vorabversion gekennzeichnet und nur für Personen mit Repository-Zugriff sichtbar.
+
+| Download | Verwendung |
+| --- | --- |
+| [Windows-Installer](https://github.com/nikdwo/Scrivener-Clone/releases/download/v0.1.0-alpha.1/Schreibatelier-0.1.0-alpha.1-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
+| [Portables ZIP](https://github.com/nikdwo/Scrivener-Clone/releases/download/v0.1.0-alpha.1/Schreibatelier-0.1.0-alpha.1-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
+
+Im portablen Modus liegen Einstellungen, automatische Sicherungen, Vorschauen und WebView-Daten unter `Data` neben der EXE. Zum Umziehen den gesamten Ordner bei geschlossener Anwendung kopieren. Manuskripte bleiben an dem Ort, den du beim Speichern auswählst; außerhalb abgelegte Projekte müssen separat mitgenommen werden. Temporäre Konverterdateien verwenden weiterhin den Windows-Temp-Ordner.
+
+Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 1](docs/RELEASE-ALPHA-1.md).
+
+## Aus dem Quellprojekt starten
 
 **Im Projektordner einfach „Schreibatelier starten“ doppelklicken.** Die Windows-Verknüpfung öffnet die fertige Anwendung. Jeder Release-Build erstellt bzw. aktualisiert sie automatisch; nach dem Verschieben des Quellprojektordners lässt sie sich mit `scripts/create-shortcut.ps1` neu erzeugen.
 
-Das ZIP `artifacts/Schreibatelier-0.1.0-win-x64.zip` vollständig entpacken und **Schreibatelier.exe** im entpackten Ordner starten. Alternativ liegt die fertige Anwendung unter `artifacts/Schreibatelier/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
+Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.1/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.1/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
 
 Über **Datei → Neues Projekt** eine `.schreibprojekt`-Datei anlegen. Darin werden Text, Projektstruktur, Rechercheanhänge und Textstände gespeichert. Eine vorhandene Datei wird beim Anlegen eines Projekts niemals überschrieben.
 
@@ -33,7 +46,7 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 
 Autosave erfolgt nach einer Sekunde Eingabepause beziehungsweise spätestens im Fünf-Sekunden-Intervall. Erst die bestätigte Meldung **Alle Änderungen gespeichert** bedeutet, dass die Datenbanktransaktion abgeschlossen ist. Scheitert Speichern, bleibt die Eingabe im Editor und der Abschnittswechsel wird abgebrochen. Strg+S versucht das Speichern erneut.
 
-Beim Öffnen und Schließen eines schreibbaren Projekts entstehen geprüfte Sicherungskopien unter `%LocalAppData%\Schreibatelier\Backups\<Projektkennung>`. Die letzten 20 Kopien bleiben erhalten. **Datei → Sicherung wiederherstellen** schreibt eine neue Projektdatei. Eine zweite Instanz desselben Projekts öffnet es schreibgeschützt. Die `.lockfile` neben dem Projekt ist eine Sperrdatei; ihr bloßes Vorhandensein sperrt nichts, entscheidend ist die geöffnete Dateisperre.
+Beim Öffnen und Schließen eines schreibbaren Projekts entstehen geprüfte Sicherungskopien unter `%LocalAppData%\Schreibatelier\Backups\<Projektkennung>` (portabel: `Data/Backups/<Projektkennung>` neben der EXE). Die letzten 20 Kopien bleiben erhalten. **Datei → Sicherung wiederherstellen** schreibt eine neue Projektdatei. Eine zweite Instanz desselben Projekts öffnet es schreibgeschützt. Die `.lockfile` neben dem Projekt ist eine Sperrdatei; ihr bloßes Vorhandensein sperrt nichts, entscheidend ist die geöffnete Dateisperre.
 
 Die lokale Sicherung schützt nicht vor dem Ausfall desselben Laufwerks. Eine zusätzliche Projektkopie kann über **Kopie speichern** auf einem anderen Datenträger abgelegt werden. Die Anwendung implementiert keine Synchronisation; eine laufend geöffnete Datenbank ist nicht für gleichzeitige Änderungen auf mehreren Rechnern vorgesehen.
 
@@ -43,14 +56,15 @@ Die konkrete Funktions- und Formatabdeckung steht in [docs/UMFANG.md](docs/UMFAN
 
 ## Quellprojekt bauen und prüfen
 
-Voraussetzungen: Windows x64, .NET SDK aus `global.json`, aktuelles Node.js mit npm und für die Oberflächentests Microsoft Edge. Alle direkten Pakete sind versioniert; npm- und NuGet-Lockdateien liegen bei.
+Voraussetzungen: Windows x64, .NET SDK aus `global.json`, aktuelles Node.js mit npm und für die Oberflächentests Microsoft Edge. Für den Installer wird [Inno Setup](https://jrsoftware.org/isdl.php) benötigt (geprüft: 7.1.0 x64). `scripts/package.ps1` verwendet `.tools/InnoSetup/ISCC.exe`; ein anderer Compilerpfad kann mit `-Compiler` übergeben werden. Alle direkten Pakete sind versioniert; npm- und NuGet-Lockdateien liegen bei.
 
 ```powershell
 & .\scripts\build.ps1             # Abhängigkeiten, TypeScript-Prüfung, Debug-Build
 & .\scripts\install-tools.ps1     # Einmalig: geprüfte Konverter
 & .\scripts\test.ps1              # JavaScript- und Speicher-/Konverterprüfungen
 npm.cmd run test:ui               # Browserprüfung mit Test-Bridge
-& .\scripts\build.ps1 -Release    # Eigenständiges Windows-Paket und ZIP
+& .\scripts\build.ps1 -Release    # Installer, portables ZIP und SHA-256-Prüfsummen
+& .\scripts\test-release.ps1      # Paket-, Start-, Umzugs- und Deinstallationsprüfung
 ```
 
 `src/Schreibatelier.Core` enthält Speicherung und Konvertierung, `src/Schreibatelier.App` die Windows-Hülle und die kontrollierte Editor-Bridge. `web` enthält den lokalen Editor; `tests` enthält ausführbare Prüfungen. `.work`, `.tools`, `node_modules`, Build-Ausgaben und Benutzerprojekte werden nicht als Quellcode eingecheckt. Ein öffentliches Repository wurde nicht angelegt.

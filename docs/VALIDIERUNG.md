@@ -1,6 +1,14 @@
-# Validierung 0.1.0
+# Validierung – Alpha 1 (0.1.0-alpha.1)
 
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Alpha-1-Veröffentlichung, 6. September 2026
+
+TypeScript-Prüfung und Release-Build erfolgreich; drei JavaScript-Logiktests, 77 Speicher-/Konverterprüfungen und acht Edge-Oberflächentests bestanden. Die Alpha-Kennzeichnung wurde auch in einer Aufnahme der echten Windows-Anwendung geprüft.
+
+`scripts/test-release.ps1` prüft die SHA-256-Werte und testet die ausgelieferten Pakete in einem neuen Unterordner von `.work/release-check/`: portables ZIP entpacken, native Editor-Bridge bis SQLite, Einstellungen/Backups/WebView-Daten im lokalen `Data`-Ordner, erneuter Start nach einem Ordnerumzug mit erhaltenen Einstellungen, tatsächliche Installer-Ausführung, Start der installierten Anwendung und Deinstallation. Die Deinstallation entfernte Programmdateien und Registrierung; selbst angelegte Projektdateien und Benutzerdaten blieben erhalten. Alle diese Prüfungen bestanden. Die installierte Anwendung verwendet für den nativen Test einen isolierten Datenordner; vorhandene Benutzereinstellungen werden dabei nicht angefasst.
+
+Installer mit Inno Setup 7.1.0 x64 gebaut. Der Compiler-Download wurde gegen SHA-256 `0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f` und eine gültige Authenticode-Signatur von Pyrsys B.V. geprüft. Die eigenen Anwendungspakete sind **nicht signiert**. Die Paketprüfung erfolgt auf demselben Rechner; ein zweiter Rechner und die Installation einer fehlenden WebView2 Runtime wurden nicht geprüft.
 
 ## Automatische Prüfungen
 

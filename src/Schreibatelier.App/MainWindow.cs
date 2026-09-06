@@ -26,19 +26,24 @@ public sealed class MainWindow : Window
     private const string Assets = "https://assets.schreibatelier.local/";
     private bool integrationTest;
     private bool fileOperation;
+    private const string AppTitle = "Schreibatelier – Alpha 1";
+    private string BackupRoot => Path.Combine(dataDirectory, "Backups");
 
     public MainWindow(string[] args)
     {
         arguments = args;
         integrationTest = args.Contains("--integration-test");
-        dataDirectory = integrationTest ? Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".work", "app-test")) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Schreibatelier");
+        dataDirectory = File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.txt"))
+            ? Path.Combine(AppContext.BaseDirectory, "Data")
+            : integrationTest ? Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".work", "app-test"))
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Schreibatelier");
         Directory.CreateDirectory(dataDirectory);
         var prefsFile = Path.Combine(dataDirectory, "preferences.json");
         if (File.Exists(prefsFile)) try { preferences = JsonNode.Parse(File.ReadAllText(prefsFile))!.AsObject(); } catch (JsonException) { /* A broken preferences file never prevents opening a project. */ }
         converter = new(FindTools());
         if (preferences["pandoc"] is JsonValue p) converter.Pandoc = p.GetValue<string>();
         if (preferences["typst"] is JsonValue t) converter.Typst = t.GetValue<string>();
-        Title = "Schreibatelier"; Width = 1460; Height = 960; MinWidth = 760; MinHeight = 480;
+        Title = AppTitle; Width = 1460; Height = 960; MinWidth = 760; MinHeight = 480;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var layout = new DockPanel(); var menu = new Menu(); DockPanel.SetDock(menu, Dock.Top);
         foreach (var (title, entries) in new[] {
@@ -78,10 +83,18 @@ public sealed class MainWindow : Window
             core.ProcessFailed += (_, _) => MessageBox.Show("Der Editorprozess wurde beendet. Zuletzt bestätigte Speicherstände bleiben im Projekt. Bitte die Anwendung neu öffnen.", "Editor nicht verfügbar", MessageBoxButton.OK, MessageBoxImage.Error);
             core.DownloadStarting += (_, e) => e.Cancel = true;
             var file = arguments.FirstOrDefault(x => x.EndsWith(".schreibprojekt", StringComparison.OrdinalIgnoreCase));
-            if (file is not null) Switch(new ProjectStore(file, integrationTest ? Path.Combine(dataDirectory, "Backups") : null));
+            if (file is not null) Switch(integrationTest && !File.Exists(file)
+                ? ProjectStore.Create(file, "Alpha-1-Paketprüfung", BackupRoot)
+                : new ProjectStore(file, BackupRoot));
             web.Source = new Uri(Origin + "index.html");
         }
-        catch (Exception ex) { MessageBox.Show("Start fehlgeschlagen: " + ex.Message + "\nBenötigt wird die Microsoft Edge WebView2-Laufzeit.", "Schreibatelier", MessageBoxButton.OK, MessageBoxImage.Error); allowClose = true; Close(); }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            if (MessageBox.Show("Die Microsoft Edge WebView2-Laufzeit fehlt. Die offizielle Downloadseite jetzt öffnen?", AppTitle, MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+                Process.Start(new ProcessStartInfo("https://developer.microsoft.com/microsoft-edge/webview2/") { UseShellExecute = true });
+            allowClose = true; Close();
+        }
+        catch (Exception ex) { MessageBox.Show("Start fehlgeschlagen: " + ex.Message, AppTitle, MessageBoxButton.OK, MessageBoxImage.Error); allowClose = true; Close(); }
     }
     private void Resource(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
     {
@@ -108,7 +121,7 @@ public sealed class MainWindow : Window
     {
         try { if (store is not null && !store.ReadOnly) store.Backup(); if (!next.ReadOnly) next.Backup(); }
         catch { next.Dispose(); throw; }
-        store?.Dispose(); store = next; Title = Store.GetProject().Title + " – Schreibatelier" + (Store.ReadOnly ? " (schreibgeschützt)" : "");
+        store?.Dispose(); store = next; Title = Store.GetProject().Title + " – " + AppTitle + (Store.ReadOnly ? " (schreibgeschützt)" : "");
     }
     private void OnClosing(object? sender, CancelEventArgs e)
     {
@@ -133,7 +146,7 @@ public sealed class MainWindow : Window
             }
             object? result = action switch
             {
-                "ready" => new { project = store?.GetProject(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest },
+                "ready" => new { project = store?.GetProject(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, storageDirectory = dataDirectory },
                 "state" => Store.GetProject(),
                 "document" => Store.GetDocument(Str(a, "id")),
                 "save" => Store.SaveDocuments(a["documents"]!.Deserialize<DocumentInfo[]>(Model.Json)!),
@@ -158,12 +171,12 @@ public sealed class MainWindow : Window
             case "new":
                 var create = new SaveFileDialog { Filter = ProjectFilter, FileName = "Mein Manuskript.schreibprojekt", OverwritePrompt = false };
                 if (create.ShowDialog(this) != true) return null;
-                Switch(ProjectStore.Create(create.FileName, Path.GetFileNameWithoutExtension(create.FileName))); return Store.GetProject();
+                Switch(ProjectStore.Create(create.FileName, Path.GetFileNameWithoutExtension(create.FileName), BackupRoot)); return Store.GetProject();
             case "open":
                 var open = new OpenFileDialog { Filter = ProjectFilter };
                 if (open.ShowDialog(this) != true) return null;
                 if (store is not null && string.Equals(Path.GetFullPath(open.FileName), Store.FilePath, StringComparison.OrdinalIgnoreCase)) return Store.GetProject();
-                Switch(new ProjectStore(open.FileName)); return Store.GetProject();
+                Switch(new ProjectStore(open.FileName, BackupRoot)); return Store.GetProject();
             case "saveCopy":
                 var copy = new SaveFileDialog { Filter = ProjectFilter, FileName = Store.GetProject().Title + " – Kopie.schreibprojekt", OverwritePrompt = false };
                 if (copy.ShowDialog(this) == true) { Store.SaveCopy(copy.FileName); return copy.FileName; }
@@ -173,13 +186,13 @@ public sealed class MainWindow : Window
                 if (backup.ShowDialog(this) != true) return null;
                 var restored = new SaveFileDialog { Filter = ProjectFilter, FileName = "Wiederhergestellt.schreibprojekt", OverwritePrompt = false };
                 if (restored.ShowDialog(this) != true) return null;
-                using (var source = new ProjectStore(backup.FileName)) source.SaveCopy(restored.FileName);
-                Switch(new ProjectStore(restored.FileName)); return Store.GetProject();
+                using (var source = new ProjectStore(backup.FileName, BackupRoot)) source.SaveCopy(restored.FileName);
+                Switch(new ProjectStore(restored.FileName, BackupRoot)); return Store.GetProject();
             case "move": Store.Move(Str(a, "id"), Str(a, "parent"), a["index"]!.GetValue<int>()); return Store.GetProject();
             case "split": Store.Split(Str(a, "id"), a["revision"]!.GetValue<long>(), Str(a, "firstBody"), Str(a, "secondBody"), Str(a, "title")); return Store.GetProject();
             case "merge": Store.Merge(Str(a, "firstId"), Str(a, "secondId"), a["firstRevision"]!.GetValue<long>(), a["secondRevision"]!.GetValue<long>()); return Store.GetProject();
             case "trash": Store.Trash(Str(a, "id"), a["deleted"]!.GetValue<bool>()); return Store.GetProject();
-            case "settings": Store.SaveSettings(Str(a, "title"), a["settings"]!.AsObject()); Title = Str(a, "title") + " – Schreibatelier"; return Store.GetProject();
+            case "settings": Store.SaveSettings(Str(a, "title"), a["settings"]!.AsObject()); Title = Str(a, "title") + " – " + AppTitle; return Store.GetProject();
             case "restoreSnapshot": Store.RestoreSnapshot(Str(a, "id"), Str(a, "snapshotId")); return Store.GetDocument(Str(a, "id"));
             case "attach":
                 var attach = new OpenFileDialog { Filter = a["imageOnly"]?.GetValue<bool>() == true ? "Bilder|*.png;*.jpg;*.jpeg;*.gif;*.webp" : "Recherchedateien|*.pdf;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.mp3;*.wav;*.mp4;*.webm;*.m4a;*.html;*.htm|Alle Dateien|*.*" };
@@ -234,6 +247,9 @@ public sealed class MainWindow : Window
             case "close": if (store is not null && !store.ReadOnly) store.Backup(); allowClose = true; _ = Dispatcher.BeginInvoke(Close); return null;
             case "integrationResult":
                 if (!integrationTest) throw new InvalidOperationException("Testbefehl ist deaktiviert.");
+                if (store is not null && !store.ReadOnly) store.Backup();
+                a["storageDirectory"] = dataDirectory;
+                a["backupDirectory"] = store?.BackupDirectory;
                 using (var capture = File.Create(Path.Combine(dataDirectory, "native.png"))) await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, capture);
                 File.WriteAllText(Path.Combine(dataDirectory, "result.json"), a.ToJsonString()); allowClose = true; _ = Dispatcher.BeginInvoke(Close); return null;
             case "integrationCapture":

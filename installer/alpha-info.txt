@@ -1,0 +1,11 @@
+Schreibatelier – Alpha 1 (0.1.0-alpha.1)
+
+Dies ist eine frühe Testversion. Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger.
+
+Die Anwendung wird für dein Windows-Benutzerkonto installiert. Die .NET-Laufzeit ist enthalten. Microsoft Edge WebView2 Runtime muss vorhanden sein; falls sie fehlt, bietet die Anwendung die offizielle Microsoft-Downloadseite an.
+
+Pandoc und Typst für erweiterte Import-/Exportformate werden separat eingerichtet. Details stehen in README.md. Für das Schreiben ist kein Konto erforderlich.
+
+Eine Deinstallation entfernt die Programmdateien. Eigene Projekte, Einstellungen und Sicherungen bleiben erhalten.
+
+Diese Alpha ist nicht digital signiert. Eine Prüfung auf einem zweiten Rechner steht noch aus.
