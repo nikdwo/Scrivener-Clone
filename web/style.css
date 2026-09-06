@@ -918,13 +918,16 @@ button.active {
   max-width:1180px;
   margin:auto;
   height:calc(100vh - 76px);
-  align-items:center;
+  align-items:flex-start;
+  overflow-y:auto;
   justify-content:space-between;
   padding:60px;
   gap:80px}
 
 .welcome-copy {
-  min-width:420px}
+  min-width:0;
+  width:530px;
+  margin-block:auto}
 
 .eyebrow {
   font-size:10px;
@@ -958,11 +961,52 @@ button.active {
   font-size:11px;
   color:var(--muted)}
 
+.recent-projects {
+  margin-top:26px}
+
+.recent-projects h2 {
+  margin:0 0 10px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--muted)}
+
+.recent-project-list {
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:7px}
+
+.recent-project-list button {
+  display:block;
+  width:100%;
+  min-width:0;
+  padding:10px 14px;
+  text-align:left;
+  background:var(--paper)}
+
+.recent-project-list button span,.recent-project-list button small {
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap}
+
+.recent-project-list button small {
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px}
+
+.welcome .recent-projects p {
+  margin:0;
+  font-size:12px}
+
 .welcome-note span {
   color:var(--accent);
   margin-right:8px}
 
 .welcome-art {
+  margin-block:auto;
   position:relative;
   width:340px;
   height:395px;

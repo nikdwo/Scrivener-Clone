@@ -3,12 +3,12 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "Schreibatelier dependencies",
-  "documentNamespace": "https://schreibatelier.invalid/spdx/3bf1436f-4f0e-4cf0-bdca-68d95f151464",
+  "documentNamespace": "https://schreibatelier.invalid/spdx/d710d194-85f5-4d72-ba67-976f0e8dfa28",
   "creationInfo": {
     "creators": [
       "Tool: Schreibatelier license inventory"
     ],
-    "created": "2026-09-06T09:22:01.974Z"
+    "created": "2026-09-06T13:15:50.700Z"
   },
   "packages": [
     {

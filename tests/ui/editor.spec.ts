@@ -10,7 +10,7 @@ test.beforeEach(async({page})=>{
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
       try{
         let result:any=null;
-        if(action==='ready')result={project:clone(project),tools:{},preferences:JSON.parse(sessionStorage.getItem('testPreferences')??'{}')};
+        if(action==='ready')result={project:sessionStorage.getItem('testWelcome')?null:clone(project),recentProjects:JSON.parse(sessionStorage.getItem('testRecentProjects')??'[]'),tools:{},preferences:JSON.parse(sessionStorage.getItem('testPreferences')??'{}')};
         else if(action==='preferences')sessionStorage.setItem('testPreferences',JSON.stringify(args));
         else if(action==='licenses')result='Schreibatelier – Test-Lizenztext';
         else if(action==='proofStatus')result={localAvailable:true,premiumConnected:(window as any).__test.premiumConnected};
@@ -23,6 +23,7 @@ test.beforeEach(async({page})=>{
         }
         else if(action==='state')result=clone(project);
         else if(action==='open')result=clone(project);
+        else if(action==='openRecent'){if((window as any).__test.recentError)throw new Error('Das Projekt wurde verschoben oder gelöscht.');(window as any).__test.openedRecent=args.path;result=clone(project);result.filePath=args.path}
         else if(action==='document')result=clone(docs.find(d=>d.id===args.id));
         else if(action==='save'||action==='replace'){await new Promise(r=>setTimeout(r,(window as any).__test.saveDelay));if((window as any).__test.failSave)throw new Error('Datenträger ist schreibgeschützt.');result=args.documents.map((d:any)=>{const old=docs.find(x=>x.id===d.id);if(old.revision!==d.revision)throw new Error('Versionskonflikt');if(action==='replace')snapshots.push({...clone(old),documentId:old.id,title:'Vor Suchen und Ersetzen'});Object.assign(old,clone(d),{revision:d.revision+1});return clone(old)})}
         else if(action==='create'){const d={id:crypto.randomUUID(),parentId:args.parent,title:args.title,kind:args.kind,body:args.body??body(''),meta:args.meta??{},position:docs.filter(x=>x.parentId===args.parent).length,revision:0,words:0};docs.push(d);result=clone(d)}
@@ -36,6 +37,23 @@ test.beforeEach(async({page})=>{
   });
   await page.goto('http://127.0.0.1:4177/index.html',{waitUntil:'domcontentloaded'});
   await expect(page.locator('#workspace')).toBeVisible();
+});
+
+test('welcome lists three recent projects with direct opening and missing-file feedback',async({page})=>{
+  const entries=[{title:'Nacht <img src=x onerror=alert(1)>',filePath:'D:\\Romane\\Nacht.schreibprojekt'},{title:'Am See',filePath:'D:\\Romane\\Am See.schreibprojekt'},{title:'Am See',filePath:'E:\\Archiv\\'+('Langer Ordnername\\'.repeat(12))+'Am See.schreibprojekt'},{title:'Viertes Projekt',filePath:'D:\\Vier.schreibprojekt'}];
+  await page.evaluate(entries=>{sessionStorage.setItem('testWelcome','true');sessionStorage.setItem('testRecentProjects',JSON.stringify(entries))},entries);await page.reload();
+  await expect(page.locator('#welcome')).toBeVisible();
+  const buttons=page.locator('#recentProjects button');await expect(buttons).toHaveCount(3);
+  await expect(buttons.locator('span')).toHaveText(entries.slice(0,3).map(p=>p.title));await expect(page.locator('#recentProjects img')).toHaveCount(0);
+  await expect(buttons.nth(1).locator('small')).toHaveText(entries[1].filePath);
+  await page.screenshot({path:'artifacts/recent-projects-light.png'});
+  await buttons.nth(1).click();await expect(page.locator('#workspace')).toBeVisible();expect(await page.evaluate(()=>(window as any).__test.openedRecent)).toBe(entries[1].filePath);
+  await page.reload();await page.evaluate(()=>{(window as any).__test.recentError=true});await buttons.first().click();await expect(page.locator('#toast')).toContainText('verschoben oder gelöscht');await expect(page.locator('#welcome')).toBeVisible();await expect(buttons.first()).toBeEnabled();
+  await page.setViewportSize({width:960,height:540});await page.locator('[data-action="theme"]').click();await buttons.last().scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth&&document.getElementById('welcome')!.scrollWidth<=document.getElementById('welcome')!.clientWidth)).toBe(true);
+  await page.screenshot({path:'artifacts/recent-projects-compact-dark.png'});
+  await page.evaluate(()=>{(window as any).__test.recentError=false});await buttons.last().focus();await page.keyboard.press('Enter');await expect(page.locator('#workspace')).toBeVisible();expect(await page.evaluate(()=>(window as any).__test.openedRecent)).toBe(entries[2].filePath);
+  await page.evaluate(()=>sessionStorage.removeItem('testRecentProjects'));await page.reload();await expect(page.locator('#recentProjectsEmpty')).toBeVisible();await expect(buttons).toHaveCount(0);
 });
 
 test('write, format, save, reopen and preserve footnotes',async({page})=>{

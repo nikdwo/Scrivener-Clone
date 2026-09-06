@@ -18,6 +18,7 @@ public sealed class MainWindow : Window
     private readonly WebView2 web = new();
     private readonly ConversionService converter;
     private readonly ProofreadingService proof;
+    private readonly RecentProjects recentProjects;
     private ProjectStore? store;
     private bool allowClose;
     private readonly string dataDirectory;
@@ -39,6 +40,7 @@ public sealed class MainWindow : Window
             : integrationTest ? Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".work", "app-test"))
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Schreibatelier");
         Directory.CreateDirectory(dataDirectory);
+        recentProjects = new(dataDirectory);
         var prefsFile = Path.Combine(dataDirectory, "preferences.json");
         if (File.Exists(prefsFile)) try { preferences = JsonNode.Parse(File.ReadAllText(prefsFile))!.AsObject(); } catch (JsonException) { /* A broken preferences file never prevents opening a project. */ }
         converter = new(FindTools());
@@ -124,7 +126,9 @@ public sealed class MainWindow : Window
     {
         try { if (store is not null && !store.ReadOnly) store.Backup(); if (!next.ReadOnly) next.Backup(); }
         catch { next.Dispose(); throw; }
-        store?.Dispose(); store = next; Title = Store.GetProject().Title + " – " + AppTitle + (Store.ReadOnly ? " (schreibgeschützt)" : "");
+        store?.Dispose(); store = next; var project = Store.GetProject(); Title = project.Title + " – " + AppTitle + (Store.ReadOnly ? " (schreibgeschützt)" : "");
+        try { recentProjects.Remember(project.Title, Store.FilePath); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Debug.WriteLine("Projekt geöffnet, aber Öffnungshistorie nicht gespeichert: " + ex.Message); }
     }
     private void OnClosing(object? sender, CancelEventArgs e)
     {
@@ -142,14 +146,14 @@ public sealed class MainWindow : Window
         {
             if (e.WebMessageAsJson.Length > 40_000_000) throw new InvalidDataException("Nachricht ist zu groß.");
             var message = JsonNode.Parse(e.WebMessageAsJson)!.AsObject(); id = Str(message, "id"); var action = Str(message, "action"); var a = message["args"]?.AsObject() ?? new();
-            if (action is "new" or "open" or "close" or "import" or "export" or "preview" or "restoreBackup" or "attach")
+            if (action is "new" or "open" or "openRecent" or "close" or "import" or "export" or "preview" or "restoreBackup" or "attach")
             {
                 if (fileOperation) throw new InvalidOperationException("Bitte den laufenden Dateivorgang abschließen lassen.");
                 fileOperation = acquired = true;
             }
             object? result = action switch
             {
-                "ready" => new { project = store?.GetProject(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, storageDirectory = dataDirectory },
+                "ready" => new { project = store?.GetProject(), recentProjects = recentProjects.Read(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, storageDirectory = dataDirectory },
                 "state" => Store.GetProject(),
                 "document" => Store.GetDocument(Str(a, "id")),
                 "save" => Store.SaveDocuments(a["documents"]!.Deserialize<DocumentInfo[]>(Model.Json)!),
@@ -188,6 +192,12 @@ public sealed class MainWindow : Window
                 if (open.ShowDialog(this) != true) return null;
                 if (store is not null && string.Equals(Path.GetFullPath(open.FileName), Store.FilePath, StringComparison.OrdinalIgnoreCase)) return Store.GetProject();
                 Switch(new ProjectStore(open.FileName, BackupRoot)); return Store.GetProject();
+            case "openRecent":
+                var recent = recentProjects.Read().FirstOrDefault(p => string.Equals(p.FilePath, Str(a, "path"), StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidDataException("Dieses Projekt steht nicht mehr in der Liste. Bitte über „Projekt öffnen“ auswählen.");
+                if (!File.Exists(recent.FilePath)) throw new FileNotFoundException("Das Projekt wurde verschoben, gelöscht oder das Laufwerk ist nicht verbunden. Bitte über „Projekt öffnen“ neu auswählen.");
+                if (store is not null && string.Equals(recent.FilePath, Store.FilePath, StringComparison.OrdinalIgnoreCase)) return Store.GetProject();
+                Switch(new ProjectStore(recent.FilePath, BackupRoot)); return Store.GetProject();
             case "saveCopy":
                 var copy = new SaveFileDialog { Filter = ProjectFilter, FileName = Store.GetProject().Title + " – Kopie.schreibprojekt", OverwritePrompt = false };
                 if (copy.ShowDialog(this) == true) { Store.SaveCopy(copy.FileName); return copy.FileName; }

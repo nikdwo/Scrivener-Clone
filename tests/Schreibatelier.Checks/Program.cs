@@ -1,4 +1,5 @@
 using Schreibatelier.Core;
+using Schreibatelier.App;
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
@@ -17,6 +18,18 @@ var root = Path.Combine(workspace, ".work", "checks", Model.Id()); Directory.Cre
 var passed = 0;
 void Check(bool condition, string label) { if (!condition) throw new Exception("FAILED: " + label); passed++; Console.WriteLine("PASS " + label); }
 void Throws<T>(Action action, string label) where T : Exception { try { action(); } catch (T) { Check(true, label); return; } throw new Exception("FAILED (no exception): " + label); }
+var recent = new RecentProjects(root);
+Check(recent.Read().Length == 0, "Opening history starts empty");
+foreach (var name in new[] { "A", "B", "C", "D" }) recent.Remember(name, Path.Combine(root, name + ".schreibprojekt"));
+Check(new RecentProjects(root).Read().Select(p => p.Title).SequenceEqual(new[] { "D", "C", "B" }), "Only the three most recently opened projects survive reload");
+recent.Remember("B renamed", Path.Combine(root, "B.schreibprojekt").ToUpperInvariant());
+Check(recent.Read().Select(p => p.Title).SequenceEqual(new[] { "B renamed", "D", "C" }), "Reopening promotes a project without case-sensitive duplicates");
+Check(recent.Read().All(p => !File.Exists(p.FilePath)), "Unavailable projects stay listed without creating missing files");
+File.WriteAllText(Path.Combine(root, "recent-projects.json"), "[null,{\"title\":\"Invalid\",\"filePath\":\"relative.schreibprojekt\"}]");
+Check(recent.Read().Length == 0, "Malformed opening-history entries are ignored");
+File.WriteAllText(Path.Combine(root, "recent-projects.json"), "not json");
+Check(recent.Read().Length == 0, "Damaged opening history does not prevent startup");
+if (args.Contains("--recent-projects")) { Console.WriteLine($"{passed} recent-project checks passed."); return; }
 var path = Path.Combine(root, "test.schreibprojekt");
 using (var store = ProjectStore.Create(path, "Prüfmanuskript", Path.Combine(root, "backups")))
 {

@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/Schreibatelier.Core/Schreibatelier.Core.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/Schreibatelier.App/RecentProjects.cs" Link="RecentProjects.cs" /></ItemGroup>
 </Project>

@@ -23,6 +23,8 @@ Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha
 
 Über **Datei → Neues Projekt** eine `.schreibprojekt`-Datei anlegen. Darin werden Text, Projektstruktur, Rechercheanhänge und Textstände gespeichert. Eine vorhandene Datei wird beim Anlegen eines Projekts niemals überschrieben.
 
+Die Startseite zeigt unter **Zuletzt geöffnet** die letzten drei erfolgreich geöffneten Projekte mit Name und Speicherort. Ein Klick öffnet das Projekt direkt; erneutes Öffnen setzt es an den Anfang. Die Liste wird lokal gespeichert und füllt sich ab der ersten Nutzung dieser Funktion. Bei verschobenen oder nicht verfügbaren Dateien über **Projekt öffnen** den aktuellen Speicherort auswählen.
+
 Für DOCX/RTF/ODT/Markdown/HTML-Import und die erweiterten Ausgabeformate wird **Pandoc** benötigt, für PDF zusätzlich **Typst**. Im Quellprojekt sind die geprüften Versionen bereits unter `.tools` installiert. Für einen separat entpackten Anwendungsordner:
 
 ```powershell
