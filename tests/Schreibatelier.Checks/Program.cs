@@ -37,6 +37,19 @@ var path = Path.Combine(root, "test.schreibprojekt");
 using (var store = ProjectStore.Create(path, "Prüfmanuskript", Path.Combine(root, "backups")))
 {
     Check(store.GetProject().Documents.Count == 2, "New project contains two roots");
+    Check(!store.GetProject().Settings.ContainsKey("styleAnalysis"), "Older projects need no style settings migration");
+    var styleSettings = new JsonObject { ["styleAnalysis"] = new JsonObject { ["repetitions"] = true, ["sentences"] = false, ["wording"] = true, ["automatic"] = true } };
+    store.SaveSettings("Prüfmanuskript", styleSettings);
+    using (var reader = new ProjectStore(path))
+    {
+        Check(reader.GetProject().Settings["styleAnalysis"]!.ToJsonString() == styleSettings["styleAnalysis"]!.ToJsonString(), "Style preferences survive a separate SQLite connection");
+        Throws<IOException>(() => reader.SaveSettings("Prüfmanuskript", styleSettings), "Read-only project cannot change style preferences");
+    }
+    foreach (var invalidStyle in new[] { "null", "true", "[]", "{\"automatic\":\"yes\"}", "{\"wording\":1}", "{\"unexpected\":true}" })
+        Throws<InvalidDataException>(() => store.SaveSettings("Bad", new JsonObject { ["styleAnalysis"] = JsonNode.Parse(invalidStyle) }), "Invalid style settings rejected: " + invalidStyle);
+    Check(store.GetProject().Title == "Prüfmanuskript" && store.GetProject().Settings.ToJsonString() == styleSettings.ToJsonString(), "Rejected settings preserve project title and earlier preferences");
+    var styleCopy = Path.Combine(root, "style-settings.schreibprojekt"); store.SaveCopy(styleCopy);
+    using (var reopenedStyle = new ProjectStore(styleCopy)) Check(reopenedStyle.GetProject().Settings.ToJsonString() == styleSettings.ToJsonString(), "Reopening a project copy preserves style preferences");
     var first = store.AddDocument("manuscript", "Kapitel Eins", body: Model.TextBody("Grüße, Welt. Ein neuer Anfang."));
     var second = store.AddDocument("manuscript", "Kapitel Zwei", body: Model.TextBody("Dieser Text bleibt erhalten."));
     Check(first.Words == 5, "Unicode word count");

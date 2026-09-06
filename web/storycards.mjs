@@ -16,16 +16,18 @@ export function inManuscript(d, documents) {
 }
 export const isScene = (d, documents) => !!d && ['text','script'].includes(d.kind) && !isStoryCard(d) && inManuscript(d, documents);
 
-export function cardMatches(doc, cards) {
+export function cardNameIndex(cards) {
   const names = new Map();
   for (const card of cards.filter(d => isStoryCard(d) && !d.deleted)) {
-    for (const name of [card.title, ...card.meta.storyCard.aliases].map(s => s.trim()).filter(Boolean)) {
+    for (const name of [card.title, ...(card.meta.storyCard.aliases ?? [])].map(s => s.trim()).filter(Boolean)) {
       if (!names.has(name)) names.set(name, new Set());
       names.get(name).add(card.id);
     }
   }
-  const result = [], word = /[\p{L}\p{M}\p{N}_]/u;
-  function scan(text, start) {
+  return names;
+}
+export function findCardNames(text, start, names) {
+    const word = /[\p{L}\p{M}\p{N}_]/u;
     const candidates = [];
     // ponytail: scan each known name in loaded paragraphs; use an indexed matcher if measured typing latency grows.
     for (const [name, ids] of names) {
@@ -36,10 +38,17 @@ export function cardMatches(doc, cards) {
       }
     }
     const accepted = [];
-    for (const hit of candidates.sort((a,b) => (b.to-b.from)-(a.to-a.from) || a.from-b.from))
-      if (!accepted.some(h => h.from < hit.to && hit.from < h.to)) accepted.push(hit);
-    result.push(...accepted.sort((a,b) => a.from-b.from));
-  }
+    for (const hit of candidates.sort((a,b) => (b.to-b.from)-(a.to-a.from) || a.from-b.from)) {
+      let left=0,right=accepted.length;
+      while(left<right){const middle=(left+right)>>>1;if(accepted[middle].from<hit.from)left=middle+1;else right=middle}
+      if ((left>0&&accepted[left-1].to>hit.from)||(left<accepted.length&&accepted[left].from<hit.to)) continue;
+      accepted.splice(left,0,hit);
+    }
+    return accepted;
+}
+export function cardMatches(doc, cards) {
+  const names = cardNameIndex(cards), result = [];
+  const scan = (text, start) => result.push(...findCardNames(text, start, names));
   doc.descendants((node, pos) => {
     if (node.type.name === 'codeBlock') return false;
     if (!node.isTextblock) return;

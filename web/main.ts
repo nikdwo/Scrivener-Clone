@@ -99,7 +99,7 @@ function setDocument(d:any) { const live=cache.get(d.id);if(live&&live!==d)Objec
 function changed(d:any) {
   if(project.readOnly) return;
   d.words=wordCount(plainText(d.body ?? emptyBody)); setDocument(d); dirty.set(d.id,++serial);
-  if(isStoryCard(d))storyCards.invalidate();
+  if(isStoryCard(d)){storyCards.invalidate();proofreading.cardsChanged()}
   state('Ungespeicherte Änderungen'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>flush().catch(()=>{}),1000); updateStats();
 }
 async function flush():Promise<void> {
@@ -119,7 +119,7 @@ async function flush():Promise<void> {
 }
 setInterval(()=>{ if(dirty.size) void flush().catch(()=>{}); },5000);
 async function getDoc(id:string) { if(!cache.has(id)) { const owner=project; const d=await rpc('document',{id});if(owner!==project)throw new Error('Das Projekt hat sich während des Ladens geändert.');cache.set(id,d); } return cache.get(id); }
-async function refresh(next?:any) { await flush(); project=next ?? await rpc('state'); for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); storyCards.invalidate(); }
+async function refresh(next?:any) { await flush(); project=next ?? await rpc('state'); for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); storyCards.invalidate(); proofreading.cardsChanged(); }
 function renderRecentProjects(entries:{title:string,filePath:string}[]=[]) {
   $('recentProjects').innerHTML=entries.slice(0,3).map(p=>`<li><button type="button" data-recent-project="${h(p.filePath)}" title="${h(p.filePath)}"><span>${h(p.title||p.filePath.split(/[\\/]/).pop())}</span><small>${h(p.filePath)}</small></button></li>`).join('');
   $('recentProjectsEmpty').classList.toggle('hidden',entries.length>0);
@@ -160,7 +160,7 @@ function makeEditor(element:HTMLElement,d:any,editable=true) {
     editorProps:{attributes:{'aria-label':`Text: ${d.title}`,spellcheck:'true',lang:project.settings.proofLanguage??'de-DE'},transformPastedHTML:html=>DOMPurify.sanitize(html,{FORBID_TAGS:['img','iframe','script','style','object','embed'],FORBID_ATTR:['style','onerror','onclick']}),
       handleDOMEvents:{drop:(_view,event)=>{if((event as DragEvent).dataTransfer?.files.length){event.preventDefault();toast('Bilder bitte über „Bild“ importieren.');return true}return false}}},
     onUpdate:({editor})=>{d.body=JSON.stringify(editor.getJSON());changed(d);proofreading.changed(editor)},
-    onFocus:()=>{if(editable){active=editor;if(selected!==d.id){selected=d.id;$<HTMLInputElement>('documentTitle').value=d.title;renderTree();renderInspector()} }},
+    onFocus:()=>{if(editable){active=editor;proofreading.activated(editor);if(selected!==d.id){selected=d.id;$<HTMLInputElement>('documentTitle').value=d.title;renderTree();renderInspector()} }},
     onSelectionUpdate:()=>{if(editable){active=editor;proofreading.selectionChanged(editor)}updateFormatButtons()},
   });
   return editor;
@@ -276,7 +276,11 @@ async function restoreDocument(id:string) {
   if(view==='trash'){await actions.showTrash();renderInspector()}else await select(id);
   toast('Eintrag wiederhergestellt.');
 }
-async function saveProjectSettings() {await flush();await refresh(await rpc('settings',{title:project.title,settings:project.settings}))}
+async function saveProjectSettings() {
+  const owner=project.id,title=project.title,settings=JSON.parse(JSON.stringify(project.settings));await flush();
+  if(project?.id!==owner)throw new Error('Das Projekt wurde gewechselt. Die Einstellungen wurden nicht übernommen.');
+  const next=await rpc('settings',{projectId:owner,title,settings});if(project?.id===owner)await refresh(next);
+}
 function updateFormatButtons() {document.querySelectorAll<HTMLElement>('[data-format]').forEach(b=>b.classList.toggle('active',!!active?.isActive(b.dataset.format!)))}
 async function setView(next:string) {await flush();view=next;await renderView()}
 
@@ -480,6 +484,34 @@ async function integrationCardCheck(checks:string[]) {
   checks.push('Orts- und Gegenstandskarten → Namenserkennung → SQLite → Wiederöffnen');
   await rpc('integrationCapture',{phase:'cards'});
 }
+async function integrationStyleCheck(checks:string[]) {
+  const waitFor=async(predicate:()=>boolean)=>{for(let i=0;i<200&&!predicate();i++)await new Promise(resolve=>setTimeout(resolve,50));if(!predicate())throw new Error('Stilanalyse: Wartezeit überschritten. '+$('proofStatus').textContent)};
+  let d=project.documents.find((d:any)=>d.meta.nativeStyleCheck);
+  if(d){
+    const saved=project.settings.styleAnalysis;
+    if(!saved||saved.repetitions!==false||saved.sentences!==false||saved.wording!==true||saved.automatic!==false)throw new Error('Stileinstellungen aus vorherigem Programmstart fehlen.');
+    checks.push('Stileinstellungen aus vorherigem Programmstart geladen');
+  }else{
+    const text='Das Fenster steht offen. Das Fenster klappert eigentlich.\n'+Array.from({length:30},(_,i)=>'Wort'+i).join(' ')+'.';
+    d=await rpc('create',{parent:'manuscript',title:'Native Stilanalyse',kind:'text',body:JSON.stringify({type:'doc',content:text.split('\n').map(text=>({type:'paragraph',content:[{type:'text',text}]}))}),meta:{nativeStyleCheck:true}});await refresh();
+  }
+  await select(d.id);actions.proof();$<HTMLSelectElement>('proofEngine').value='style';$('proofEngine').dispatchEvent(new Event('change',{bubbles:true}));
+  const set=async(id:string,value:boolean)=>{if($<HTMLInputElement>(id).checked!==value){$(id).click();await waitFor(()=>!$<HTMLButtonElement>('proofRun').disabled);if($('proofStatus').classList.contains('error'))throw new Error($('proofStatus').textContent!)} };
+  await set('styleRepetitions',true);await set('styleSentences',true);await set('styleWording',true);await set('proofAuto',false);
+  const before=(await rpc('document',{id:d.id})).body;await proofreading.run();
+  for(const rule of ['repetition','wording','sentence-length'])if(!document.querySelector(`[data-rule="${rule}"]`))throw new Error('Stilhinweis fehlt: '+rule);
+  if(document.querySelectorAll('#styleOverview [data-proof-action="sentence"]').length!==3)throw new Error('Satzübersicht unvollständig.');
+  document.querySelector<HTMLButtonElement>('[data-rule="wording"] .proof-location')!.click();
+  if(active!.state.doc.textBetween(active!.state.selection.from,active!.state.selection.to)!=='eigentlich')throw new Error('Stilfundstelle falsch.');
+  if($('proofRun').textContent!=='Abschnitt analysieren')throw new Error('Navigation hat Prüfumfang geändert.');
+  if((await rpc('document',{id:d.id})).body!==before)throw new Error('Stilanalyse hat gespeicherten Text verändert.');
+  await rpc('integrationCapture',{phase:'style'});
+  await set('styleRepetitions',false);await set('styleSentences',false);
+  const filePath=project.filePath;await adopt(await rpc('openRecent',{path:filePath}));await select(d.id);actions.proof();
+  if($<HTMLInputElement>('styleRepetitions').checked||$<HTMLInputElement>('styleSentences').checked||!$<HTMLInputElement>('styleWording').checked)throw new Error('Stileinstellungen nach erneutem Öffnen fehlen.');
+  await proofreading.run();if(document.querySelectorAll('.proof-finding').length!==1||!document.querySelector('[data-rule="wording"]'))throw new Error('Gespeicherte Kategorien nicht angewendet.');
+  checks.push('Lokale Stilanalyse → drei Kategorien → Navigation → unveränderter Text → SQLite-Einstellungen → Wiederöffnen');
+}
 async function integrationCheck() {
   const checks:string[]=[];
   try {const reopened=await rpc('openRecent',{path:project.filePath});if(reopened.id!==project.id)throw new Error('Zuletzt geöffnet: falsches Projekt');checks.push('Zuletzt geöffnet → Projektzugriff');const d=await rpc('create',{parent:'manuscript',title:'Native Editorprüfung',kind:'text'});await refresh();setDocument(d);await select(d.id);active!.commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Grüße aus dem Windows-Editor.',marks:[{type:'bold'}]},{type:'footnote',attrs:{id:'native-note',text:'Eine echte Fußnote.'}}]}]});await flush();const saved=await rpc('document',{id:d.id});if(!saved.body.includes('Windows-Editor'))throw new Error('Speichern fehlgeschlagen');checks.push('Editor → Bridge → SQLite');if(!saved.body.includes('footnote'))throw new Error('Fußnote fehlt');checks.push('Fußnote und Formatierung');await rpc('integrationCapture',{phase:'editor'});
@@ -496,6 +528,6 @@ async function integrationCheck() {
       if(!document.querySelector<HTMLElement>(selector)?.getClientRects().length)throw new Error('Kontoanmeldung nicht sichtbar: '+$('proofAccount').textContent);
       await rpc('integrationCapture',{phase});checks.push(engine+'-Anmeldeknopf im Windows-Programm sichtbar');
     }
-    for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await integrationCardCheck(checks);await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
+    for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await integrationCardCheck(checks);await integrationStyleCheck(checks);await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
 }
 void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.updateInfo){updates.configure(result.updateInfo,preferences.checkUpdatesAtStartup!==false);if(!result.integrationTest&&preferences.checkUpdatesAtStartup!==false)void updates.check(true)}if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});

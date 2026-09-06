@@ -1,5 +1,7 @@
 # Sprachprüfung
 
+Auf `testing` steht zusätzlich **Stilanalyse · lokal** zur Verfügung: eigenständige lokale Hinweise zu Wiederholungen, Satzlängen und Formulierungen ohne Konto oder gestartete LanguageTool-Engine. Anleitung und Grenzen: [Stilanalyse](STILANALYSE.md). Die folgenden Anbieterhinweise gelten weiterhin für die bisherigen drei Sprachprüfverfahren.
+
 Stand: 6. September 2026. Die drei Prüfverfahren sind implementiert. Die lokale Prüfung ist mit der echten Engine und Windows-Anwendung getestet. ChatGPT wurde mit einem verbundenen Benutzerkonto und GPT-5.6-Sol an einem kurzen deutschen Prüfsatz erfolgreich getestet. Für LanguageTool Premium ist die Textprüfung mit einem Benutzerkonto noch offen.
 
 ## Bedienung

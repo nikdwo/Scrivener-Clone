@@ -6,7 +6,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "node scripts/build-web.mjs",
-    "test": "node --test tests/web.test.mjs",
+    "test": "node --test tests/web.test.mjs tests/styleanalysis.test.mjs",
     "test:ui": "playwright test",
     "licenses": "node scripts/licenses.mjs"
   },

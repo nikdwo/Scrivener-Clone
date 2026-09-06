@@ -32,7 +32,7 @@ public sealed class MainWindow : Window
     private const string Assets = "https://assets.schreibatelier.local/";
     private bool integrationTest;
     private bool fileOperation;
-    private const string AppTitle = "Schreibatelier – Alpha 4";
+    private static string AppTitle => "Schreibatelier – Alpha 4" + (typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Contains("+testing.") == true ? " · Testversion Stilanalyse" : "");
     private string BackupRoot => Path.Combine(dataDirectory, "Backups");
 
     public MainWindow(string[] args)
@@ -234,7 +234,9 @@ public sealed class MainWindow : Window
             case "split": Store.Split(Str(a, "id"), a["revision"]!.GetValue<long>(), Str(a, "firstBody"), Str(a, "secondBody"), Str(a, "title")); return Store.GetProject();
             case "merge": Store.Merge(Str(a, "firstId"), Str(a, "secondId"), a["firstRevision"]!.GetValue<long>(), a["secondRevision"]!.GetValue<long>()); return Store.GetProject();
             case "trash": Store.Trash(Str(a, "id"), a["deleted"]!.GetValue<bool>()); return Store.GetProject();
-            case "settings": Store.SaveSettings(Str(a, "title"), a["settings"]!.AsObject()); Title = Str(a, "title") + " – " + AppTitle; return Store.GetProject();
+            case "settings":
+                if (Str(a, "projectId") != Store.GetProject().Id) throw new InvalidOperationException("Das Projekt wurde gewechselt. Die Einstellungen wurden nicht übernommen.");
+                Store.SaveSettings(Str(a, "title"), a["settings"]!.AsObject()); Title = Str(a, "title") + " – " + AppTitle; return Store.GetProject();
             case "restoreSnapshot": Store.RestoreSnapshot(Str(a, "id"), Str(a, "snapshotId")); return Store.GetDocument(Str(a, "id"));
             case "attach":
                 var attach = new OpenFileDialog { Filter = a["imageOnly"]?.GetValue<bool>() == true ? "Bilder|*.png;*.jpg;*.jpeg;*.gif;*.webp" : "Recherchedateien|*.pdf;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.mp3;*.wav;*.mp4;*.webm;*.m4a;*.html;*.htm|Alle Dateien|*.*" };
@@ -296,7 +298,7 @@ public sealed class MainWindow : Window
                 File.WriteAllText(Path.Combine(dataDirectory, "result.json"), a.ToJsonString()); allowClose = true; _ = Dispatcher.BeginInvoke(Close); return null;
             case "integrationCapture":
                 if (!integrationTest) throw new InvalidOperationException("Testbefehl ist deaktiviert.");
-                var phase = Str(a, "phase"); if (phase is not ("editor" or "pdf" or "html" or "proof" or "proof-premium" or "proof-chatgpt" or "cards")) throw new InvalidDataException();
+                var phase = Str(a, "phase"); if (phase is not ("editor" or "pdf" or "html" or "proof" or "proof-premium" or "proof-chatgpt" or "cards" or "style")) throw new InvalidDataException();
                 using (var capture = File.Create(Path.Combine(dataDirectory, phase + ".png"))) await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, capture);
                 return true;
             default: throw new InvalidDataException("Unbekannter Befehl: " + action);

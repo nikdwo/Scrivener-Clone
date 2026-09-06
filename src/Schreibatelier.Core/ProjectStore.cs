@@ -178,6 +178,11 @@ public sealed class ProjectStore : IDisposable
     {
         Writable(); if (string.IsNullOrWhiteSpace(title) || title.Length > 500 || settings.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Ungültige Projekteinstellungen.");
         if (settings.ContainsKey("recognizeCardNames") && (settings["recognizeCardNames"] is not JsonValue flag || !flag.TryGetValue<bool>(out _))) throw new InvalidDataException("Ungültige Einstellung für die Namenserkennung.");
+        if (settings.ContainsKey("styleAnalysis"))
+        {
+            if (settings["styleAnalysis"] is not JsonObject style || style.Any(pair => pair.Key is not ("repetitions" or "sentences" or "wording" or "automatic") || pair.Value is not JsonValue value || !value.TryGetValue<bool>(out _)))
+                throw new InvalidDataException("Ungültige Einstellungen für die Stilanalyse.");
+        }
         using var db = Connect(); Execute(db, "UPDATE project SET title=$title,settings=$settings", ("$title", title), ("$settings", settings.ToJsonString()));
     }
     public DocumentInfo Split(string id, long revision, string firstBody, string secondBody, string title)

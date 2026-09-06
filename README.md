@@ -47,6 +47,8 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 
 ## Benutzen
 
+**Auf `testing`:** Die neue [lokale deutsche Stilanalyse](docs/STILANALYSE.md) ergänzt Wiederholungs-, Satzlängen- und Formulierungshinweise. Mit `scripts/build.ps1 -Testing` entsteht eine startbare Testversion; **Schreibatelier starten** verweist anschließend auf diesen Testbuild. In der Anwendung **Prüfen → Prüfverfahren → Stilanalyse · lokal** wählen. Diese Erweiterung ist noch nicht in den Alpha-4-Downloads enthalten.
+
 **Neu in Alpha 4:** [Figuren-, Orts- und Gegenstandskarten mit automatischer Namenserkennung](docs/FIGUREN-UND-ORTE.md). Die Karten gehören zu den oben verlinkten Alpha-4-Paketen.
 
 Ein **Rechtsklick auf einen Eintrag → In den Papierkorb verschieben** öffnet das Löschmenü für Abschnitte, Ordner, Recherchedateien, Figuren, Orte und Gegenstände. Alternativ den Eintrag mit der Tastatur fokussieren und **Umschalt+F10** drücken. Nach der Bestätigung verschwindet der Eintrag aus der Liste; unter **Papierkorb → Wiederherstellen** kommt er zurück. Ordner umfassen ihre Untereinträge. Die festen Projektbereiche bleiben erhalten; schreibgeschützte Projekte lassen keine Änderungen zu.

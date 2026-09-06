@@ -8,9 +8,10 @@ test.beforeEach(async({page})=>{
     const persisted=JSON.parse(sessionStorage.getItem('testSavedProject')??'null');
     if(persisted){docs.splice(0,docs.length,...persisted.documents);Object.assign(project,persisted,{documents:docs})}
     const listeners:Function[]=[];const snapshots:any[]=[];const clone=(x:any)=>JSON.parse(JSON.stringify(x));
-    (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots,proofDelay:0,proofCalls:[],premiumConnected:false,listeners};
+    (window as any).__test={project,docs,failSave:false,saveDelay:0,snapshots,proofDelay:0,proofCalls:[],proofTraffic:[],premiumConnected:false,listeners};
     Object.defineProperty(window,'chrome',{configurable:true,value:{webview:{addEventListener:(_type:string,listener:Function)=>listeners.push(listener),postMessage:async({id,action,args}:any)=>{
       try{
+        if(action.startsWith('proof'))(window as any).__test.proofTraffic.push(action);
         let result:any=null;
         if(action==='ready')result={project:sessionStorage.getItem('testWelcome')?null:clone(project),recentProjects:JSON.parse(sessionStorage.getItem('testRecentProjects')??'[]'),tools:{},preferences:{checkUpdatesAtStartup:false,...JSON.parse(sessionStorage.getItem('testPreferences')??'{}')},updateInfo:{version:'0.1.0-alpha.2',portable:!!sessionStorage.getItem('testPortable')}};
         else if(action==='preferences')sessionStorage.setItem('testPreferences',JSON.stringify(args));
@@ -47,7 +48,7 @@ test.beforeEach(async({page})=>{
           const visit=(id:string)=>{const item=docs.find(d=>d.id===id);item.deleted=args.deleted;item.revision++;for(const child of docs.filter(d=>d.parentId===id))visit(child.id)};visit(d.id);result=clone(project);
         }
         else if(action==='snapshots')result=clone(snapshots.filter(s=>s.documentId===args.id));
-        else if(action==='settings'){project.title=args.title;project.settings=args.settings;result=clone(project)}
+        else if(action==='settings'){await new Promise(r=>setTimeout(r,(window as any).__test.settingsDelay??0));if(args.projectId!==project.id)throw new Error('Das Projekt wurde gewechselt.');if((window as any).__test.failSettings)throw new Error('Einstellungen konnten nicht gespeichert werden.');project.title=args.title;project.settings=args.settings;result=clone(project)}
         else if(action==='search')result=docs.filter(d=>d.body.includes(args.query)||d.title.includes(args.query)).map(d=>({...d,excerpt:'Gefundener Text'}));
         for(const l of listeners)l({data:{id,ok:true,result}});
       }catch(e:any){for(const l of listeners)l({data:{id,ok:false,error:e.message}})}
@@ -290,6 +291,109 @@ test('local automatic proofreading never triggers online calls and read-only cor
   await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toHaveText('✓ Alle Änderungen gespeichert');
   await page.evaluate(()=>{(window as any).__test.project.readOnly=true;document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
   await page.locator('[data-doc="scene"]').click();await page.locator('#proofRun').click();await expect(page.locator('[data-proof-action="replace"]').first()).toBeDisabled();
+});
+
+async function openStyleAnalysis(page:any,text?:string) {
+  if(text!==undefined)await page.evaluate(text=>{(window as any).__test.docs.find((d:any)=>d.id==='scene').body=JSON.stringify({type:'doc',content:text.split('\n').map(text=>({type:'paragraph',content:text?[{type:'text',text}]:[]}))})},text);
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await page.locator('#proofEngine').selectOption('style');
+  await expect(page.locator('#styleOptions')).toBeVisible();
+}
+const styleSample='Das Fenster steht offen. Das Fenster klappert eigentlich.\n'+Array.from({length:30},(_,i)=>'Wort'+i).join(' ')+'.';
+
+test('style analysis finds all categories offline, navigates without changing scope and preserves text',async({page})=>{
+  await openStyleAnalysis(page,styleSample);
+  const traffic=await page.evaluate(()=>(window as any).__test.proofTraffic.length),before=await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body);
+  await expect(page.locator('#proofAccount')).toBeHidden();await expect(page.locator('#proofStyleLabel')).toBeHidden();await expect(page.locator('#proofModelField')).toBeHidden();await expect(page.locator('#proofAuto')).not.toBeChecked();
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(3);
+  expect((await page.locator('[data-rule="sentence-length"] .proof-location').innerText()).length).toBeLessThanOrEqual(181);
+  await expect(page.locator('#styleOverview [data-proof-action="sentence"]')).toHaveCount(3);
+  await expect(page.locator('#styleOverview')).toContainText('30 Wörter');await expect(page.locator('[data-proof-action="replace"]')).toHaveCount(0);
+  await page.locator('[data-rule="repetition"] .proof-location').focus();await page.keyboard.press('Enter');
+  await expect.poll(()=>page.evaluate(()=>window.getSelection()?.toString())).toBe('Fenster');await expect(page.locator('#proofRun')).toHaveText('Abschnitt analysieren');
+  await page.locator('[data-proof-action="sentence"]').last().click();await expect(page.locator('#proofRun')).toHaveText('Abschnitt analysieren');
+  await page.locator('[data-rule="wording"] [data-proof-action="ignore"]').click();await expect(page.locator('.proof-finding')).toHaveCount(2);
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(3);
+  expect(await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body)).toBe(before);
+  expect(await page.evaluate(()=>(window as any).__test.proofTraffic.length)).toBe(traffic);
+  await page.screenshot({path:'artifacts/style-analysis-light.png'});
+  await page.setViewportSize({width:960,height:640});await page.locator('[data-action="theme"]').click();
+  await page.locator('#inspectorResize').focus();await page.keyboard.press('Home');
+  expect(await page.locator('#proofPanel').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await page.locator('[data-rule="wording"]').scrollIntoViewIfNeeded();await page.screenshot({path:'artifacts/style-analysis-dark.png'});
+  await page.locator('[data-rule="wording"] .proof-location').click();await page.keyboard.type('bewusst');await page.keyboard.press('Control+z');
+  await expect(page.locator('.editor-sheet .tiptap')).toContainText('eigentlich');await expect(page.locator('.proof-mark')).toHaveCount(0);
+});
+
+test('style analysis settings persist and failed saves or read-only projects keep data safe',async({page})=>{
+  await openStyleAnalysis(page,styleSample);
+  await page.locator('#styleSentences').uncheck();await expect(page.locator('#proofStatus')).toContainText('gespeichert');
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(2);await expect(page.locator('#styleOverview')).toBeEmpty();
+  await page.locator('#styleWording').uncheck();await expect(page.locator('#proofStatus')).toContainText('gespeichert');
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
+  await page.locator('#styleRepetitions').uncheck();await expect(page.locator('#proofStatus')).toContainText('gespeichert');
+  await page.locator('#proofRun').click();await expect(page.locator('#proofStatus')).toContainText('0 Stilhinweise');
+  await page.locator('#styleWording').check();await expect(page.locator('#proofStatus')).toContainText('gespeichert');
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await openStyleAnalysis(page);
+  await expect(page.locator('#styleSentences')).not.toBeChecked();await expect(page.locator('#styleRepetitions')).not.toBeChecked();await expect(page.locator('#styleWording')).toBeChecked();
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
+  await page.evaluate(()=>{(window as any).__test.failSettings=true});await page.locator('#styleSentences').click();
+  await expect(page.locator('#proofStatus')).toContainText('nicht gespeichert');await expect(page.locator('#styleSentences')).not.toBeChecked();
+  await page.evaluate(()=>{(window as any).__test.failSettings=false;(window as any).__test.failSave=true});
+  await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' ERHALTEN');
+  await page.locator('#styleSentences').click();await expect(page.locator('#proofStatus')).toContainText('schreibgeschützt');await expect(page.locator('#styleSentences')).not.toBeChecked();await expect(page.locator('.editor-sheet .tiptap')).toContainText('ERHALTEN');
+  await page.locator('[data-doc="scene2"]').click();await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+  await page.evaluate(()=>{(window as any).__test.failSave=false});await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');
+  await page.evaluate(()=>{(window as any).__test.project.readOnly=true;document.querySelector<HTMLElement>('[data-action="open"]')!.click()});await page.locator('[data-doc="scene"]').click();
+  await expect(page.locator('#styleSentences')).toBeDisabled();await expect(page.locator('#proofAuto')).toBeDisabled();await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
+});
+
+test('style analysis pending preference save cannot overwrite a different project',async({page})=>{
+  await openStyleAnalysis(page,styleSample);
+  await page.evaluate(()=>{(window as any).__test.settingsDelay=300});await page.locator('#styleWording').click();
+  await page.evaluate(()=>{const next=(window as any).__test.project;next.id='another-project';next.title='Zweites Projekt';next.settings={wordTarget:1234};document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
+  await expect(page.locator('#projectLabel')).toHaveText('Zweites Projekt');await expect(page.locator('#proofRun')).toBeEnabled();
+  expect(await page.evaluate(()=>(window as any).__test.project.settings)).toEqual({wordTarget:1234});
+  await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await expect(page.locator('#styleWording')).toBeChecked();
+});
+
+test('style analysis automatic mode is opt-in and only runs in the visible analysis view',async({page})=>{
+  await openStyleAnalysis(page,'Fenster Fenster.');const traffic=await page.evaluate(()=>(window as any).__test.proofTraffic.length);
+  const editor=page.locator('.editor-sheet .tiptap');await editor.click();await page.keyboard.press('Control+End');await page.keyboard.type(' eigentlich');await page.waitForTimeout(1700);await expect(page.locator('.proof-finding')).toHaveCount(0);
+  await page.locator('#proofAuto').check();await expect(page.locator('#proofStatus')).toContainText('gespeichert');await expect(page.locator('.proof-finding')).toHaveCount(2);
+  await editor.click();await page.keyboard.press('Control+End');await page.keyboard.type(' quasi');await expect(page.locator('.proof-finding')).toHaveCount(3);
+  await page.locator('[data-inspector="notes"]').click();await editor.click();await page.keyboard.press('Control+End');await page.keyboard.type(' irgendwie');await page.waitForTimeout(1700);await expect(page.locator('.proof-finding')).toHaveCount(0);
+  await page.locator('[data-inspector="proof"]').click();await page.waitForTimeout(1700);await expect(page.locator('.proof-finding')).toHaveCount(0);
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(4);
+  expect(await page.evaluate(()=>(window as any).__test.proofTraffic.length)).toBe(traffic);
+  await page.locator('#proofAuto').uncheck();await expect(page.locator('#proofStatus')).toContainText('gespeichert');
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await openStyleAnalysis(page);await expect(page.locator('#proofAuto')).not.toBeChecked();
+});
+
+test('style analysis handles selection, combined editors, project changes and cancellation',async({page})=>{
+  await openStyleAnalysis(page,styleSample);
+  await page.locator('.editor-sheet .tiptap').evaluate((el:any)=>{const node=el.firstChild.firstChild,range=document.createRange();range.setStart(node,0);range.setEnd(node,10);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range)});
+  await page.locator('[data-action="proof"]').click();await expect(page.locator('#proofRun')).toHaveText('Markierung analysieren');await page.locator('#proofRun').click();await expect(page.locator('#styleOverview')).toContainText('Ausschnitt 1: 2 Wörter');
+  await page.locator('[data-action="proof"]').click();await expect(page.locator('#proofRun')).toHaveText('Markierung analysieren');
+  await page.locator('[data-doc="chapter"]').click();await page.locator('#combined').check();
+  await page.locator('.editor-sheet .tiptap').nth(1).click();await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(3);
+  await page.locator('.editor-sheet .tiptap').nth(2).click();await expect(page.locator('.proof-mark')).toHaveCount(0);await expect(page.locator('.proof-finding')).toHaveCount(0);await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(0);await expect(page.locator('#styleOverview [data-proof-action="sentence"]')).toHaveCount(1);
+  await page.locator('#combined').uncheck();await page.locator('[data-doc="scene"]').click();
+  await page.locator('.editor-sheet .tiptap').fill(('Fenster Fenster eigentlich.\n').repeat(1500));
+  await page.evaluate(()=>{document.querySelector<HTMLButtonElement>('#proofRun')!.click();document.querySelector<HTMLButtonElement>('#proofCancel')!.click()});
+  await expect(page.locator('#proofRun')).toBeEnabled();await expect(page.locator('.proof-finding')).toHaveCount(0);
+  await page.locator('#proofRun').click();await page.locator('#proofEngine').selectOption('local');await expect(page.locator('#proofRun')).toBeEnabled();await expect(page.locator('.proof-finding')).toHaveCount(0);
+  await page.locator('#proofEngine').selectOption('style');await page.locator('#proofRun').click();
+  await page.evaluate(()=>{(window as any).__test.project.id='other';(window as any).__test.project.settings={};document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
+  await expect(page.locator('.proof-finding')).toHaveCount(0);await expect(page.locator('.proof-mark')).toHaveCount(0);
+});
+
+test('style analysis paginates long results and refreshes card name exceptions',async({page})=>{
+  await openStyleAnalysis(page,Array(60).fill('Fenster Fenster eigentlich.').join('\n'));
+  await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(50);await expect(page.locator('#styleOverview [data-proof-action="sentence"]')).toHaveCount(50);
+  await page.locator('[data-proof-action="sentencesPage"]').last().click();await expect(page.locator('#styleOverview [data-proof-action="sentence"]')).toHaveCount(10);await page.locator('#styleOverview [data-proof-action="sentence"]').last().click();await expect(page.locator('#proofRun')).toHaveText('Abschnitt analysieren');
+  await page.locator('[data-proof-action="resultsPage"]').last().click();await expect(page.locator('.proof-finding')).toHaveCount(50);
+  await newStoryCard(page,'item','Fenster');await page.locator('[data-inspector="proof"]').click();await page.locator('#proofRun').click();await expect(page.locator('#proofStatus')).toContainText('119 Stilhinweise');
+  expect(await page.locator('[data-rule="repetition"] .proof-location').allTextContents()).not.toContain('Fenster');
 });
 
 async function newStoryCard(page:any,type:string,name:string) {
