@@ -4,6 +4,8 @@ Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alph
 
 ## Alpha 5 herunterladen und starten
 
+**Aktueller Entwicklungsstand: [Testversion Beziehungsnetz](docs/BEZIEHUNGSNETZ.md)** (`0.1.0-alpha.5+testing.relationships`). Im Projektordner **Testversion Beziehungsnetz.lnk** starten und **Ansicht → Beziehungsnetz** öffnen. Dieser lokale Testbuild enthält Beziehungen zwischen Figuren, Orten und Gegenständen; die unten verlinkten Alpha-5-Downloads enthalten diesen Ausbau noch nicht.
+
 **Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Schreibatelier-Releases/releases/tag/v0.1.0-alpha.5) sind als Vorabversion gekennzeichnet und ohne Anmeldung erreichbar. Der Quellcode bleibt privat.
 
 | Download | Verwendung |

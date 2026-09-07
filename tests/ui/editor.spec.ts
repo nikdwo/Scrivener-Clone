@@ -48,7 +48,9 @@ test.beforeEach(async({page})=>{
           const visit=(id:string)=>{const item=docs.find(d=>d.id===id);item.deleted=args.deleted;item.revision++;for(const child of docs.filter(d=>d.parentId===id))visit(child.id)};visit(d.id);result=clone(project);
         }
         else if(action==='snapshots')result=clone(snapshots.filter(s=>s.documentId===args.id));
-        else if(action==='settings'){await new Promise(r=>setTimeout(r,(window as any).__test.settingsDelay??0));if(args.projectId!==project.id)throw new Error('Das Projekt wurde gewechselt.');if((window as any).__test.failSettings)throw new Error('Einstellungen konnten nicht gespeichert werden.');project.title=args.title;project.settings=args.settings;result=clone(project)}
+        else if(action==='settings'){await new Promise(r=>setTimeout(r,(window as any).__test.settingsDelay??0));if(args.projectId!==project.id)throw new Error('Das Projekt wurde gewechselt.');if(project.readOnly||(window as any).__test.failSettings)throw new Error('Einstellungen konnten nicht gespeichert werden.');if(args.baseTitle===undefined||args.title!==args.baseTitle)project.title=args.title;
+          if(args.baseSettings){for(const key of new Set([...Object.keys(args.settings),...Object.keys(args.baseSettings)])){if(JSON.stringify(args.settings[key])===JSON.stringify(args.baseSettings[key]))continue;if(JSON.stringify(project.settings[key])!==JSON.stringify(args.baseSettings[key])&&JSON.stringify(project.settings[key])!==JSON.stringify(args.settings[key]))throw new Error('Diese Projekteinstellung wurde zwischenzeitlich geändert.');if(key in args.settings)project.settings[key]=clone(args.settings[key]);else delete project.settings[key]}}
+          else project.settings=args.settings;result=clone(project)}
         else if(action==='search')result=docs.filter(d=>d.body.includes(args.query)||d.title.includes(args.query)).map(d=>({...d,excerpt:'Gefundener Text'}));
         for(const l of listeners)l({data:{id,ok:true,result}});
       }catch(e:any){for(const l of listeners)l({data:{id,ok:false,error:e.message}})}
@@ -710,4 +712,81 @@ test('story name decorations follow combined editors, keyboard navigation and pr
   await page.evaluate(()=>{const test=(window as any).__test;test.project.id='other-project';for(let i=test.docs.length-1;i>=0;i--)if(test.docs[i].meta.storyCard)test.docs.splice(i,1);document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
   await expect(page.locator('#documentTitle')).toHaveValue('Manuskript');await page.locator('[data-doc="scene"]').click();
   await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(0);await expect(page.locator('#storyList')).toContainText('Keine passenden Karten');
+});
+async function networkFixture(page:any,count=4,edgeCount=0){
+  await page.evaluate(({count,edgeCount}:any)=>{
+    const p=(window as any).__test.project,id=(n:number)=>n.toString(16).padStart(32,'0');
+    for(let i=1;i<=count;i++)p.documents.push({id:id(i),title:['Mara','Jonas','Hafenstadt','Kompass'][i-1]??'Karte '+i,parentId:'research',position:i-1,kind:'text',body:JSON.stringify({type:'doc',content:[{type:'paragraph'}]}),meta:{storyCard:{type:i===3?'place':i===4?'item':'figure',aliases:[],fields:i<3?{relationships:'Bisherige freie Beziehungsnotiz'}:{}}},revision:0,words:0});
+    if(edgeCount)p.settings.relationshipNetwork={edges:Array.from({length:edgeCount},(_,n)=>({id:id(n+1000),fromId:id(n%count+1),toId:id((n+1)%count+1),label:'Verbindung '+n,direction:n%2?'mutual':'directed',notes:'Notiz'})),positions:{}};
+    sessionStorage.setItem('testSavedProject',JSON.stringify(p));
+  },{count,edgeCount});await page.reload();await page.locator('[data-view="relationships"]').click();await expect(page.locator('.network-card')).toHaveCount(count);
+}
+const networkId=(n:number)=>n.toString(16).padStart(32,'0');
+async function networkConnect(page:any,from:number,to:number,label:string,direction='directed'){
+  await page.locator('#networkView [data-network-action="new"]').click();await page.locator('#relationship-fromId').selectOption(networkId(from));await page.locator('#relationship-toId').selectOption(networkId(to));await page.locator('#relationship-label').fill(label);await page.locator('#relationship-direction').selectOption(direction);await page.locator('#relationship-notes').fill('Beispielnotiz');await page.locator('#relationshipForm [type="submit"]').click();await expect(page.locator('#relationshipForm')).toHaveCount(0);
+}
+test('relationships connect all card types, edit cards, keep manuscript unchanged and survive reopen with keyboard positions',async({page})=>{
+  await networkFixture(page);const before=await page.evaluate(()=>JSON.stringify((window as any).__test.docs.filter((d:any)=>d.parentId!=='research')));
+  await networkConnect(page,1,2,'vertraut');await networkConnect(page,1,3,'wohnt in');await networkConnect(page,2,4,'verbunden','mutual');await expect(page.locator('.network-edge')).toHaveCount(3);
+  await page.locator(`[data-network-card="${networkId(1)}"] .network-card-open`).click();await expect(page.locator('#storyRelationships')).toContainText('vertraut');await expect(page.locator('#storyField-relationships')).toHaveValue('Bisherige freie Beziehungsnotiz');await page.locator('#storyTitle').fill('Mara Berg');await page.keyboard.press('Control+s');await expect(page.locator('[data-view="relationships"]')).toHaveClass('active');
+  const positionX=await page.locator(`[data-network-card="${networkId(1)}"]`).evaluate(el=>parseFloat(getComputedStyle(el).left));const handle=page.locator(`[data-network-move="${networkId(1)}"]`);await handle.focus();await handle.press('ArrowRight');await handle.press('Enter');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.project.settings.relationshipNetwork.positions['1'.padStart(32,'0')]?.x)).toBe(positionX+10);
+  expect(await page.evaluate(()=>JSON.stringify((window as any).__test.docs.filter((d:any)=>d.parentId!=='research')))).toBe(before);expect(await page.evaluate(()=>(window as any).__test.proofTraffic)).toEqual([]);
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await page.locator('[data-view="relationships"]').click();await expect(page.locator('.network-edge')).toHaveCount(3);await expect(page.locator(`[data-network-card="${networkId(1)}"]`)).toHaveCSS('left',`${positionX+10}px`);
+});
+test('relationships retain failed forms, block switches until cancel, and retry failed position saves',async({page})=>{
+  await networkFixture(page);await page.locator('#networkView [data-network-action="new"]').click();await page.locator('#relationship-toId').selectOption(networkId(2));await page.locator('#relationship-label').fill('vertraut');
+  await page.evaluate(()=>{(window as any).__test.failSettings=true});await page.locator('#relationshipForm [type="submit"]').click();await expect(page.locator('#relationshipError')).toContainText('Einstellungen');await expect(page.locator('#relationship-label')).toHaveValue('vertraut');
+  await page.locator('[data-view="write"]').click();await expect(page.locator('[data-view="relationships"]')).toHaveClass('active');await expect(page.locator('#toast')).toContainText('Beziehung speichern');await page.locator('#relationshipEditor [data-network-action="cancel"]').click();
+  const handle=page.locator(`[data-network-move="${networkId(1)}"]`);await handle.focus();await handle.press('ArrowDown');await handle.press('Enter');await expect(page.locator('[data-network-action="retry"]')).toBeVisible();await handle.focus();await handle.press('ArrowDown');await handle.press('Escape');await expect(page.locator('[data-network-action="retry"]')).toBeVisible();await expect(page.locator(`[data-network-card="${networkId(1)}"]`)).toHaveCSS('top','50px');
+  await page.evaluate(()=>{(window as any).__test.failSettings=false});await page.locator('[data-network-action="retry"]').click();await expect(page.locator('[data-network-action="retry"]')).toHaveCount(0);await expect(page.locator(`[data-network-card="${networkId(1)}"]`)).toHaveCSS('top','50px');
+});
+test('relationships search and neighbors retain navigation state, escape cancels movement, and removal keeps cards',async({page})=>{
+  await networkFixture(page,4,3);await page.locator('#networkSearch').fill('Mara');await page.locator('#networkSearchResults button').click();await page.locator('#networkNeighbors').check();await expect(page.locator('.network-card')).toHaveCount(2);
+  const node=page.locator(`[data-network-card="${networkId(1)}"]`),left=await node.evaluate(el=>getComputedStyle(el).left);const handle=page.locator(`[data-network-move="${networkId(1)}"]`);await handle.focus();await handle.press('ArrowRight');await handle.press('Escape');await expect(node).toHaveCSS('left',left);
+  await page.locator('[data-view="write"]').click();await page.locator('[data-view="relationships"]').click();await expect(page.locator('#networkNeighbors')).toBeChecked();await expect(page.locator('.network-card')).toHaveCount(2);
+  await page.locator('.network-edge').click();await page.locator('#relationshipEditor [data-network-action="remove"]').click();await page.locator('#dialogSubmit').click();await expect(page.locator('.network-edge')).toHaveCount(0);await page.locator('#networkNeighbors').uncheck();await expect(page.locator('.network-card')).toHaveCount(4);
+});
+test('relationships hide trashed endpoints and restore connections, and read-only navigation remains available',async({page})=>{
+  await networkFixture(page,4,3);await page.locator(`[data-doc="${networkId(2)}"]`).click({button:'right'});await page.locator('#contextTrash').click();await page.locator('#dialogSubmit').click();await expect(page.locator('.network-card')).toHaveCount(3);await expect(page.locator('.network-edge')).toHaveCount(1);
+  await page.locator(`[data-network-card="${networkId(1)}"] .network-card-open`).click();await expect(page.locator('#storyRelationships')).toContainText('nicht verfügbar');
+  await page.evaluate(()=>{const t=(window as any).__test;t.docs.find((d:any)=>d.id==='2'.padStart(32,'0')).deleted=false;t.project.readOnly=true;sessionStorage.setItem('testSavedProject',JSON.stringify(t.project))});await page.reload();await page.locator('[data-view="relationships"]').click();await expect(page.locator('.network-edge')).toHaveCount(3);await expect(page.locator('#networkView [data-network-action="new"]')).toBeDisabled();await expect(page.locator('.network-move').first()).toBeDisabled();await page.locator('.network-edge').first().click();await expect(page.locator('#relationshipForm [type="submit"]')).toBeDisabled();await page.locator('#relationshipEditor [data-network-action="cancel"]').click();await page.locator('[data-network-action="in"]').click();
+});
+test('relationships support 200 cards and 400 edges in light and narrow dark layouts',async({page})=>{
+  await networkFixture(page,200,400);await expect(page.locator('.network-card')).toHaveCount(200);await expect(page.locator('.network-edge')).toHaveCount(400);await page.screenshot({path:'artifacts/relationships-light.png'});
+  await page.locator('#networkSearch').fill('Mara');await page.locator('#networkSearchResults button').click();await page.locator('#networkNeighbors').check();await page.locator('[data-action="theme"]').click();await page.setViewportSize({width:1050,height:800});await page.screenshot({path:'artifacts/relationships-dark.png'});await expect(page.locator('#networkView')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
+
+test('relationships drag with mouse, cancel with Escape and discard failed position changes',async({page})=>{
+  await networkFixture(page);const node=page.locator(`[data-network-card="${networkId(2)}"]`),handle=page.locator(`[data-network-move="${networkId(2)}"]`);
+  const original=await node.evaluate(el=>({x:parseFloat(getComputedStyle(el).left),y:parseFloat(getComputedStyle(el).top)}));
+  const drag=async()=>{await handle.scrollIntoViewIfNeeded();const r=(await handle.boundingBox())!;await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width/2+30,r.y+r.height/2+20,{steps:3})};
+  await drag();await page.keyboard.press('Escape');await page.mouse.up();await expect(node).toHaveCSS('left',original.x+'px');
+  await drag();await page.mouse.up();await expect.poll(()=>page.evaluate(()=>(window as any).__test.project.settings.relationshipNetwork?.positions['2'.padStart(32,'0')]?.x??0)).toBeGreaterThan(original.x);
+  const saved=await node.evaluate(el=>getComputedStyle(el).left);await page.evaluate(()=>(window as any).__test.failSettings=true);
+  await handle.focus();await handle.press('ArrowRight');await handle.press('Enter');await expect(page.locator('[data-network-action="discardPositions"]')).toBeVisible();await page.locator('[data-network-action="discardPositions"]').click();await expect(node).toHaveCSS('left',saved);await page.locator('[data-view="write"]').click();await expect(page.locator('[data-view="write"]')).toHaveClass('active');
+});
+
+test('relationships preserve simultaneous card and other settings edits and reset on a project switch',async({page})=>{
+  await networkFixture(page);await page.locator(`[data-network-card="${networkId(1)}"] .network-card-open`).click();
+  await page.locator('#storyRelationships [data-network-action="new"]').click();await page.locator('#relationship-toId').selectOption(networkId(2));await page.locator('#relationship-label').fill('vertraut');
+  await page.evaluate(()=>(window as any).__test.settingsDelay=500);await page.locator('#relationshipForm [type="submit"]').click();await expect(page.locator('#relationship-label')).toBeDisabled();
+  await page.locator('#storyField-notes').fill('Gleichzeitig geänderte Kartennotiz');await page.keyboard.press('Control+s');
+  await page.evaluate(()=>{const p=(window as any).__test.project;p.settings.wordTarget=12345;p.title='Neuer Projekttitel'});
+  await expect(page.locator('#relationshipForm')).toHaveCount(0);await expect(page.locator('#storyField-notes')).toHaveValue('Gleichzeitig geänderte Kartennotiz');
+  expect(await page.evaluate(()=>(window as any).__test.project.settings.wordTarget)).toBe(12345);expect(await page.evaluate(()=>(window as any).__test.project.title)).toBe('Neuer Projekttitel');
+  await page.locator('#networkNeighbors').check();await page.locator('#networkView [data-network-action="new"]').click();await page.locator('#relationship-toId').selectOption(networkId(3));await page.locator('#relationship-label').fill('wohnt in');await page.locator('#relationshipForm [type="submit"]').click();await expect(page.locator('#relationship-label')).toBeDisabled();
+  await page.evaluate(()=>{const t=(window as any).__test;t.project.id='other-project';t.project.settings={};t.docs.splice(5)});
+  await expect(page.locator('#relationshipError')).toContainText('Projekt wurde gewechselt');await expect(page.locator('#relationship-label')).toHaveValue('wohnt in');
+  await page.locator('#relationshipEditor [data-network-action="cancel"]').click();await page.evaluate(()=>document.querySelector<HTMLElement>('[data-action="open"]')!.click());await page.locator('[data-view="relationships"]').click();await expect(page.locator('.network-card')).toHaveCount(0);await expect(page.locator('#networkNeighbors')).not.toBeChecked();await expect(page.locator('#networkSearch')).toHaveValue('');expect(await page.evaluate(()=>(window as any).__test.project.settings.relationshipNetwork)).toBeUndefined();
+});
+
+test('relationships edit parallel connections and prevent duplicates with long names in a narrow notebook',async({page})=>{
+  await networkFixture(page);await networkConnect(page,1,2,'vertraut');await networkConnect(page,1,2,'ist verwandt mit','mutual');await expect(page.locator('.network-edge')).toHaveCount(2);
+  const line=await page.locator('.network-hit').first().evaluate(el=>{const path=el as unknown as SVGPathElement;for(let i=1;i<10;i++){const p=path.getPointAtLength(path.getTotalLength()*i/10).matrixTransform(path.getScreenCTM()!);if(document.elementFromPoint(p.x,p.y)===path)return {x:p.x,y:p.y}}return null});expect(line).not.toBeNull();await page.mouse.click(line!.x,line!.y);await expect(page.locator('#relationshipForm')).toBeVisible();await page.locator('#relationshipEditor [data-network-action="cancel"]').click();
+  await page.locator('.network-edge').filter({hasText:'vertraut'}).click();await page.locator('#relationship-notes').fill('Vertrauen mit Einschränkungen');await page.locator('#relationshipForm [type="submit"]').click();await expect(page.locator('#relationshipForm')).toHaveCount(0);
+  await page.locator('#networkView [data-network-action="new"]').click();await page.locator('#relationship-fromId').selectOption(networkId(1));await page.locator('#relationship-toId').selectOption(networkId(2));await page.locator('#relationship-label').fill(' vertraut ');await page.locator('#relationshipForm [type="submit"]').click();await expect(page.locator('#relationshipError')).toContainText('bereits');await page.locator('#relationshipEditor [data-network-action="cancel"]').click();
+  await page.locator(`[data-network-card="${networkId(1)}"] .network-card-open`).click();await page.locator('#storyTitle').fill('Mara aus dem Haus am alten Hafen mit einem langen Namen');await page.keyboard.press('Control+s');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');await expect(page.locator('#storyRelationships')).toContainText('Mara aus dem Haus am alten Hafen mit einem langen Namen');
+  await page.setViewportSize({width:1100,height:800});await page.locator('[data-network-action="fit"]').click();await page.locator('#storyRelationships').scrollIntoViewIfNeeded();await page.screenshot({path:'artifacts/relationships-example-light.png'});expect(await page.locator('#notebook').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await page.locator('[data-action="theme"]').click();await page.screenshot({path:'artifacts/relationships-example-dark.png'});
 });

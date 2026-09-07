@@ -100,6 +100,7 @@ public sealed class ProjectStore : IDisposable
         string id, title; JsonObject settings;
         using (var cmd = Command(db, "SELECT id,title,settings FROM project")) using (var r = cmd.ExecuteReader()) { r.Read(); id = r.GetString(0); title = r.GetString(1); settings = Obj(r.GetString(2)); }
         TimelineData.ValidateSettings(settings);
+        RelationshipNetworkData.ValidateSettings(settings);
         using var docs = Command(db, "SELECT id,parent_id,position,title,kind,'' AS body,meta,revision,deleted,words,modified FROM documents ORDER BY position,title"); using var rows = docs.ExecuteReader();
         var list = new List<DocumentInfo>(); while (rows.Read()) list.Add(Read(rows, false));
         var byId = list.ToDictionary(d => d.Id); var validated = new HashSet<string>();
@@ -178,9 +179,15 @@ public sealed class ProjectStore : IDisposable
         Execute(db, "WITH RECURSIVE subtree(id) AS (SELECT $id UNION ALL SELECT d.id FROM documents d JOIN subtree s ON d.parent_id=s.id) UPDATE documents SET deleted=$deleted,revision=revision+1 WHERE id IN (SELECT id FROM subtree)", ("$id", id), ("$deleted", deleted ? 1 : 0));
         tx.Commit();
     }
-    public void SaveSettings(string title, JsonObject settings)
+    public void SaveSettings(string title, JsonObject settings, JsonObject? baseline = null, string? baselineTitle = null)
     {
-        Writable(); if (string.IsNullOrWhiteSpace(title) || title.Length > 500 || settings.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Ungültige Projekteinstellungen.");
+        Writable();
+        using var db = Connect(); using var tx = db.BeginTransaction();
+        var previous = Obj((string)Scalar(db, "SELECT settings FROM project")!);
+        var currentTitle=(string)Scalar(db,"SELECT title FROM project")!;
+        if(baselineTitle is not null){if(title==baselineTitle)title=currentTitle;else if(currentTitle!=baselineTitle&&currentTitle!=title)throw new RevisionConflictException("Der Projekttitel wurde zwischenzeitlich geändert.");}
+        if(baseline is not null)settings=RelationshipNetworkData.MergeSettings(previous,settings,baseline);
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 500 || settings.ToJsonString().Length > 2_000_000) throw new InvalidDataException("Ungültige Projekteinstellungen.");
         if (settings.ContainsKey("recognizeCardNames") && (settings["recognizeCardNames"] is not JsonValue flag || !flag.TryGetValue<bool>(out _))) throw new InvalidDataException("Ungültige Einstellung für die Namenserkennung.");
         if (settings.ContainsKey("styleAnalysis"))
         {
@@ -188,8 +195,11 @@ public sealed class ProjectStore : IDisposable
                 throw new InvalidDataException("Ungültige Einstellungen für die Stilanalyse.");
         }
         TimelineData.ValidateSettings(settings);
-        using var db = Connect(); using var tx = db.BeginTransaction();
-        var previous = Obj((string)Scalar(db, "SELECT settings FROM project")!);
+        RelationshipNetworkData.ValidateSettings(settings);
+        var availableCards=new HashSet<string>();
+        using(var cards=Command(db,"SELECT id,meta FROM documents WHERE deleted=0"))using(var rows=cards.ExecuteReader())
+            while(rows.Read())if(Model.IsStoryCard(Obj(rows.GetString(1))))availableCards.Add(rows.GetString(0));
+        RelationshipNetworkData.ValidateTargets(previous,settings,availableCards);
         if (previous["timeline"] is JsonObject oldTimeline && oldTimeline["basis"]!.GetValue<string>() != settings["timeline"]?["basis"]?.GetValue<string>())
             throw new InvalidDataException("Die einmal gewählte Zeitbasis dieses Projekts bleibt fest.");
         var remaining = (settings["timeline"]?["strands"] as JsonArray ?? new()).Select(n => n!["id"]!.GetValue<string>()).ToHashSet();

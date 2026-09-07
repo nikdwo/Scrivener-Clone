@@ -1,5 +1,5 @@
 export const cardFields = {
-  figure: {role:'Rolle',motivation:'Motivation',conflict:'Konflikt',relationships:'Beziehungen',development:'Entwicklung',notes:'Notizen'},
+  figure: {role:'Rolle',motivation:'Motivation',conflict:'Konflikt',relationships:'Beziehungsnotizen',development:'Entwicklung',notes:'Notizen'},
   place: {atmosphere:'Atmosphäre',features:'Besondere Merkmale',significance:'Bedeutung für die Handlung',notes:'Notizen'},
   item: {description:'Beschreibung',features:'Besondere Merkmale',owner:'Besitzer / Zugehörigkeit',origin:'Herkunft',significance:'Bedeutung für die Handlung',notes:'Notizen'},
 };

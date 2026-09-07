@@ -9,6 +9,7 @@ type Options = {
   changed:(d:any)=>void; flush:()=>Promise<void>; refresh:(project?:any)=>Promise<void>;
   rpc:(action:string,args?:any)=>Promise<any>; modal:(title:string,body:string,button?:string)=>Promise<FormData|null>;
   show:()=>void; select:(id:string)=>Promise<void>; trash:(id:string)=>Promise<void>; error:(message:string)=>void; saveSettings:()=>Promise<void>;
+  beforeLeave:()=>Promise<void>;mountRelationships:(target:HTMLElement,id:string)=>void;
 };
 type Hit = {from:number;to:number;name:string;ids:string[]};
 const key = new PluginKey('storyCards');
@@ -79,11 +80,15 @@ export class StoryCards {
     })]});
   }
   openChoices(ids:string[]) {
+    void this.choose(ids).catch(e=>this.options.error(e.message));
+  }
+  private async choose(ids:string[]) {
+    await this.options.beforeLeave();
     const live=ids.filter(id=>this.cards().some((d:any)=>d.id===id));
     if(!live.length){this.options.error('Die Karte ist nicht verfügbar.');return}
     this.openId=live.length===1?live[0]:null;this.choices=live.length>1?live:[];this.reveal=true;this.options.show();
   }
-  async open(id:string) { this.openId=id;this.choices=[];this.reveal=true;this.options.show(); }
+  async open(id:string) { await this.options.beforeLeave();this.openId=id;this.choices=[];this.reveal=true;this.options.show(); }
   show() { void this.render().catch(e=>this.options.error(e.message)); }
   private async render() {
     const p=this.options.project();if(!p)return;
@@ -108,7 +113,7 @@ export class StoryCards {
     this.panel.querySelector<HTMLInputElement>('#storySearch')!.addEventListener('input',e=>{this.query=(e.target as HTMLInputElement).value;this.renderList()});
     this.panel.querySelector<HTMLSelectElement>('#storyFilter')!.addEventListener('change',e=>{this.filter=(e.target as HTMLSelectElement).value;this.renderList()});
     this.panel.querySelector('#storyRecognition')!.addEventListener('change',()=>void this.toggleRecognition().catch(e=>this.options.error(e.message)));
-    if(card)this.bindFields(card);
+    if(card){this.bindFields(card);this.options.mountRelationships(this.panel.querySelector('#storyRelationships')!,card.id)}
     this.renderList();this.renderMatches();
     if(this.reveal){this.panel.querySelector(this.choices.length?'#storyChoices':'#storyDetail')?.scrollIntoView({block:'start'});this.reveal=false}
   }
@@ -119,6 +124,7 @@ export class StoryCards {
       ${input('storyTitle','Name',d.title,false)}${input('storyAliases','Alternative Namen (ein Name pro Zeile)',card.aliases.join('\n'))}
       <div class="story-toolbar">${this.button('assign','Dieser Szene zuordnen',d.id,disabled||!scene||(scene.meta.storyCardIds??[]).includes(d.id))}${this.button('link','Markierten Text verknüpfen',d.id,disabled||!scene)}</div>
       ${Object.entries(cardFields[card.type]).map(([key,title])=>input('storyField-'+key,String(title),card.fields[key]??'')).join('')}
+      <div id="storyRelationships"></div>
       <h4>Eigene Felder</h4>${Object.entries(d.meta.custom??{}).map(([name,value],i)=>`<div class="story-custom">${input('storyCustom-'+i,name,String(value))}${this.button('renameField','Feld umbenennen',String(i),disabled)}${this.button('removeField','Feld entfernen',String(i),disabled)}</div>`).join('')}
       ${this.button('addField','Eigenes Feld hinzufügen','',disabled)}
       <h4>Zugeordnete Szenen</h4><div class="story-list">${this.options.project().documents.filter((s:any)=>isScene(s,this.options.project().documents)&&(s.meta.storyCardIds??[]).includes(d.id)).map((s:any)=>this.button('scene',s.title,s.id)).join('')||'<p class="muted">Noch keine Szenen zugeordnet.</p>'}</div>
@@ -164,6 +170,7 @@ export class StoryCards {
     await this.options.refresh();await this.open(d.id);
   }
   private async action(action:string,id:string) {
+    await this.options.beforeLeave();
     if(action==='open'){await this.open(id);return}
     if(action==='close'){this.openId=null;this.show();return}
     if(action==='scene'){await this.options.select(id);return}

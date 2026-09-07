@@ -4,8 +4,8 @@ Push-Location (Join-Path $PSScriptRoot '..')
 try {
     $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
     if ($Release -and $Testing) { throw 'Bitte entweder -Release oder -Testing verwenden.' }
-    if ($Testing) { $version += '+testing.timeline' }
-    $publishDirectory = if ($Testing) { 'artifacts/Schreibatelier-testing-timeline/app' } else { "artifacts/Schreibatelier-$version/app" }
+    if ($Testing) { $version += '+testing.relationships' }
+    $publishDirectory = if ($Testing) { 'artifacts/Schreibatelier-testing-relationships/app' } else { "artifacts/Schreibatelier-$version/app" }
     $env:NODE_OPTIONS = '--use-system-ca'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'

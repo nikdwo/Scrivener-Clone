@@ -16,6 +16,8 @@ if (args.FirstOrDefault() == "--crash-writer")
 var workspace = args.FirstOrDefault() ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
 if (args.Contains("--updates")) { await UpdateChecks.Run(workspace, args.Contains("--live")); return; }
 var root = Path.Combine(workspace, ".work", "checks", Model.Id()); Directory.CreateDirectory(root);
+RelationshipChecks.Run(root);
+if(args.Contains("--relationships"))return;
 if (args.Contains("--timeline")) { await TimelineChecks.Run(root); return; }
 await TimelineChecks.Run(root);
 if (args.Contains("--cards")) { await StoryCardChecks.Run(root); return; }
