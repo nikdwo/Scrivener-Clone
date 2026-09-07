@@ -27,6 +27,7 @@ function NativeCheck([string]$AppDirectory, [string]$WorkingDirectory, [string]$
     Check ($result.checks -contains 'Orts- und Gegenstandskarten → Namenserkennung → SQLite → Wiederöffnen') 'Paket speichert und erkennt Orts- und Gegenstandskarten mit Szenenzuordnungen'
     Check ($result.checks -contains 'Lokale Stilanalyse → drei Kategorien → Navigation → unveränderter Text → SQLite-Einstellungen → Wiederöffnen') 'Paket analysiert lokal und speichert Stileinstellungen'
     Check ($result.checks -contains 'Zeitstrahl → drei Szenen → zwei Handlungen → Figurenfilter → Zeitbearbeitung → SQLite → Wiederöffnen ohne Text- oder Strukturänderung') 'Paket speichert Szenenzeiten und Handlungen bei unverändertem Manuskript'
+    Check ($result.checks -contains 'Beziehungsnetz → alle Kartentypen → Notizbuch → Tastaturposition → SQLite → Wiederöffnen ohne Manuskriptänderung') 'Paket speichert Beziehungen und Kartenpositionen bei unverändertem Manuskript'
     Check (Test-Path -LiteralPath (Join-Path $AppDirectory 'Proofreading/sources.json')) 'Paket enthält die Herkunftsnachweise der lokalen Sprachprüfung'
     Check ([IO.Path]::GetFullPath($result.storageDirectory) -eq [IO.Path]::GetFullPath($DataDirectory)) 'Benutzerdaten liegen im erwarteten Ordner'
     Check ($result.backupDirectory.StartsWith((Join-Path $DataDirectory 'Backups') + '\', [StringComparison]::OrdinalIgnoreCase)) 'Sicherungen verwenden den ausgewählten Datenordner'
@@ -56,6 +57,7 @@ NativeCheck $moved (Join-Path $testRoot 'moved-working') (Join-Path $moved 'Data
 $restarted = Get-Content -LiteralPath (Join-Path $moved 'Data/result.json') -Raw | ConvertFrom-Json
 Check ($restarted.checks -contains 'Stileinstellungen aus vorherigem Programmstart geladen') 'Programmneustart erhält Stileinstellungen'
 Check ($restarted.checks -contains 'Zeitstrahl aus vorherigem Programmstart geladen') 'Programmneustart erhält Zeitstrahl und Handlungsstränge'
+Check ($restarted.checks -contains 'Beziehungsnetz aus vorherigem Programmstart geladen') 'Programmneustart erhält Beziehungen und Kartenpositionen'
 $preferences = Get-Content -LiteralPath (Join-Path $moved 'Data/preferences.json') -Raw | ConvertFrom-Json
 Check ($preferences.theme -eq 'dark' -and $preferences.inspectorWidth -eq 360) 'Portabler Umzug erhält die Einstellungen'
 $installed = Join-Path $testRoot 'installed'

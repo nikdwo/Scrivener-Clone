@@ -12,6 +12,7 @@ static class UpdateChecks
         void Check(bool ok, string message) { if (!ok) throw new Exception(message); Console.WriteLine("PASS " + message); count++; }
         async Task Reject(Func<Task> action, string label) { try { await action(); } catch (Exception ex) when (ex is IOException or InvalidDataException) { Check(true, label); return; } throw new Exception("Not rejected: " + label); }
         Check(GitHubUpdates.CompareVersions("0.1.0-alpha.10", "v0.1.0-alpha.2") > 0 && GitHubUpdates.CompareVersions("0.1.0", "0.1.0-rc.3") > 0 && GitHubUpdates.CompareVersions("1.0.0+build", "1.0.0") == 0, "SemVer orders previews numerically and ignores build metadata");
+        Check(GitHubUpdates.CompareVersions("0.1.0-alpha.6", "0.1.0-alpha.5+testing.relationships") > 0, "Alpha 6 updates both Alpha 5 and the relationship testing build");
         foreach (var invalid in new[] { "1.2", "1.2.3-alpha.01", "01.2.3", "1.2.3/evil" })
         {
             try { GitHubUpdates.CompareVersions(invalid, "1.2.3"); throw new Exception("Invalid version accepted"); } catch (InvalidDataException) { }

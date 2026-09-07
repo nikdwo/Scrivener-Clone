@@ -1,8 +1,8 @@
-# Funktionsabdeckung – Alpha 5 (0.1.0-alpha.5)
+# Funktionsabdeckung – Alpha 6 (0.1.0-alpha.6)
 
-Stand: 6. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
+Stand: 7. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
 
-Neu im Entwicklungsstand: [Beziehungsnetz](BEZIEHUNGSNETZ.md) für Figuren, Orte und Gegenstände mit gerichteten/gegenseitigen Beziehungen, Notizen, verschiebbaren Karten, Suche und Nachbarschaftsansicht. Zentral im Projekt gespeichert, ohne Zeitverlauf oder automatische Ableitung aus Freitext. Testbuild `0.1.0-alpha.5+testing.relationships`; nicht Teil der veröffentlichten Alpha 5.
+Neu in Alpha 6: [Beziehungsnetz](BEZIEHUNGSNETZ.md) für Figuren, Orte und Gegenstände mit gerichteten/gegenseitigen Beziehungen, Notizen, verschiebbaren Karten, Suche und Nachbarschaftsansicht. Zentral im Projekt gespeichert, ohne Zeitverlauf oder automatische Ableitung aus Freitext.
 
 Neu in Alpha 5: [Szenen-Zeitstrahl](ZEITSTRAHL.md) mit Handlungsbahnen, Szenenzeiten und Kartenfiltern sowie [lokale deutsche Stilanalyse](STILANALYSE.md) mit Wiederholungen, Satzlängenübersicht und Füllwörtern/Floskeln. Kein Konto oder LanguageTool-Prozess erforderlich. Kategorien und optionale Automatik werden im Projekt gespeichert.
 

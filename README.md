@@ -1,23 +1,23 @@
-# Schreibatelier – Alpha 5
+# Schreibatelier – Alpha 6
 
-Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 5 (`0.1.0-alpha.5`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
+Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 6 (`0.1.0-alpha.6`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
 
-## Alpha 5 herunterladen und starten
+## Alpha 6 herunterladen und starten
 
-**Aktueller Entwicklungsstand: [Testversion Beziehungsnetz](docs/BEZIEHUNGSNETZ.md)** (`0.1.0-alpha.5+testing.relationships`). Im Projektordner **Testversion Beziehungsnetz.lnk** starten und **Ansicht → Beziehungsnetz** öffnen. Dieser lokale Testbuild enthält Beziehungen zwischen Figuren, Orten und Gegenständen; die unten verlinkten Alpha-5-Downloads enthalten diesen Ausbau noch nicht.
+**Neu in Alpha 6: [Beziehungsnetz für Figuren, Orte und Gegenstände](docs/BEZIEHUNGSNETZ.md).** Über **Ansicht → Beziehungsnetz** öffnen.
 
-**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Schreibatelier-Releases/releases/tag/v0.1.0-alpha.5) sind als Vorabversion gekennzeichnet und ohne Anmeldung erreichbar. Der Quellcode bleibt privat.
+**Frühe Testversion:** Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger. [Release und Downloads auf GitHub](https://github.com/nikdwo/Schreibatelier-Releases/releases/tag/v0.1.0-alpha.6) sind als Vorabversion gekennzeichnet und ohne Anmeldung erreichbar. Der Quellcode bleibt privat.
 
 | Download | Verwendung |
 | --- | --- |
-| [Windows-Installer](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.5/Schreibatelier-0.1.0-alpha.5-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
-| [Portables ZIP](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.5/Schreibatelier-0.1.0-alpha.5-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
+| [Windows-Installer](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.6/Schreibatelier-0.1.0-alpha.6-Setup-win-x64.exe) | Für dein Benutzerkonto installieren; Startmenü-Eintrag, optionale Desktop-Verknüpfung und Deinstaller. |
+| [Portables ZIP](https://github.com/nikdwo/Schreibatelier-Releases/releases/download/v0.1.0-alpha.6/Schreibatelier-0.1.0-alpha.6-Portable-win-x64.zip) | Vollständig in einen beschreibbaren Ordner entpacken und `Schreibatelier.exe` starten. Die Datei `portable.txt` aktiviert den portablen Modus. |
 
 Im portablen Modus liegen Einstellungen, automatische Sicherungen, Vorschauen und WebView-Daten unter `Data` neben der EXE. Zum Umziehen den gesamten Ordner bei geschlossener Anwendung kopieren. Manuskripte bleiben an dem Ort, den du beim Speichern auswählst; außerhalb abgelegte Projekte müssen separat mitgenommen werden. Temporäre Konverterdateien verwenden weiterhin den Windows-Temp-Ordner.
 
-Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 5](docs/RELEASE-ALPHA-5.md).
+Die installierte Variante verwendet `%LocalAppData%\Schreibatelier`. Eine Deinstallation lässt eigene Projekte, Einstellungen und Sicherungen bestehen. Die Pakete sind nicht digital signiert; Windows kann deshalb einen unbekannten Herausgeber anzeigen. Prüfsummen liegen als `SHA256SUMS.txt` beim Release. [Details und Grenzen der Alpha 6](docs/RELEASE-ALPHA-6.md).
 
-Die portable Alpha 5 bestand nativen Start, Ordnerumzug und Neustart. Den internen Installerprozess blockierte auf dem Prüfrechner die Windows-Signaturrichtlinie; Installation und Deinstallation von Alpha 5 sind dort nicht bestätigt. Details stehen in [Validierung](docs/VALIDIERUNG.md). Die früheren Alpha-4-Paketversuche und die anschließende Anwenderbestätigung bleiben getrennt dokumentiert.
+Alpha 6 bestand die native Paketprüfung einschließlich portabler Nutzung, Ordnerumzug, vollständigem Neustart, Installation und Deinstallation. Testprojekte und Benutzerdaten blieben erhalten. Details stehen in [Validierung](docs/VALIDIERUNG.md); die früheren Alpha-Prüfungen bleiben dort getrennt dokumentiert.
 
 ## Updates über GitHub
 
@@ -27,13 +27,13 @@ Eine neue Versionsnummer muss als GitHub **Release** mit passenden Windows-Datei
 
 Bei der installierten Variante speichert und sichert **Speichern und Installer starten** das offene Projekt, startet den vorhandenen Windows-Installer und schließt Schreibatelier. Bei einem Speicherfehler bleibt die Anwendung offen. Bei der portablen Variante **Downloadordner öffnen**, die Anwendung schließen und das ZIP in den bisherigen Programmordner entpacken; Programmdateien ersetzen und `Data` sowie eigene Projekte beibehalten. Bei einem neuen Zielordner den bisherigen `Data`-Ordner bei geschlossener Anwendung mitkopieren. Der portable Austausch erfolgt manuell.
 
-Für künftige Veröffentlichungen zuerst eine höhere Versionsnummer in Anwendung und Paketierung setzen, die Pakete prüfen und das Quellrelease veröffentlichen. Danach `./scripts/publish-updates.ps1 -Version '0.1.0-alpha.5'` mit der tatsächlich veröffentlichten Version ausführen. Das Skript überträgt ausschließlich Installer, ZIP und Prüfsummen aus dem bestehenden Quellrelease; kein Quellcode wird veröffentlicht. Bereits veröffentlichte Dateien werden nicht überschrieben. Alpha 3 und Alpha 4 können Alpha 5 über die Updatefunktion beziehen. Die Alpha-1-/Alpha-2-Pakete benötigen einmalig den manuellen Download.
+Für künftige Veröffentlichungen zuerst eine höhere Versionsnummer in Anwendung und Paketierung setzen, die Pakete prüfen und das Quellrelease veröffentlichen. Danach `./scripts/publish-updates.ps1 -Version '0.1.0-alpha.6'` mit der tatsächlich veröffentlichten Version ausführen. Das Skript überträgt ausschließlich Installer, ZIP und Prüfsummen aus dem bestehenden Quellrelease; kein Quellcode wird veröffentlicht. Bereits veröffentlichte Dateien werden nicht überschrieben. Alpha 3, Alpha 4 und Alpha 5 können Alpha 6 über die Updatefunktion beziehen. Die Alpha-1-/Alpha-2-Pakete benötigen einmalig den manuellen Download.
 
 ## Aus dem Quellprojekt starten
 
 **Im Projektordner einfach „Schreibatelier starten“ doppelklicken.** Die Windows-Verknüpfung öffnet die fertige Anwendung. Jeder Release-Build erstellt bzw. aktualisiert sie automatisch; nach dem Verschieben des Quellprojektordners lässt sie sich mit `scripts/create-shortcut.ps1` neu erzeugen.
 
-Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.5/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.5/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
+Die Pakete liegen nach einem Release-Build unter `artifacts/releases/0.1.0-alpha.6/`. Die gebaute Anwendung liegt unter `artifacts/Schreibatelier-0.1.0-alpha.6/app/Schreibatelier.exe`. Die DLLs und der Ordner `Web` gehören dazu. Die .NET-Laufzeit wird mitgeliefert. Microsoft Edge **WebView2 Runtime** muss installiert sein; sie ist auf dem hier geprüften Rechner vorhanden.
 
 Über **Datei → Neues Projekt** eine `.schreibprojekt`-Datei anlegen. Darin werden Text, Projektstruktur, Rechercheanhänge und Textstände gespeichert. Eine vorhandene Datei wird beim Anlegen eines Projekts niemals überschrieben.
 
@@ -49,9 +49,9 @@ Das Skript lädt die festgelegten Originalpakete, prüft SHA-256 und entpackt si
 
 ## Benutzen
 
-**Neu in Alpha 5:** Der [Szenen-Zeitstrahl](docs/ZEITSTRAHL.md) ergänzt Zeitangaben, Handlungsbahnen und Kartenfilter. Die [lokale deutsche Stilanalyse](docs/STILANALYSE.md) bietet Wiederholungs-, Satzlängen- und Formulierungshinweise. Den Zeitstrahl über **Ansicht → Zeitstrahl**, die Stilanalyse rechts über **Prüfen → Prüfverfahren → Stilanalyse · lokal** öffnen. Beide Funktionen arbeiten ohne Konto oder Netzwerk.
+**Seit Alpha 5:** Der [Szenen-Zeitstrahl](docs/ZEITSTRAHL.md) ergänzt Zeitangaben, Handlungsbahnen und Kartenfilter. Die [lokale deutsche Stilanalyse](docs/STILANALYSE.md) bietet Wiederholungs-, Satzlängen- und Formulierungshinweise. Den Zeitstrahl über **Ansicht → Zeitstrahl**, die Stilanalyse rechts über **Prüfen → Prüfverfahren → Stilanalyse · lokal** öffnen. Beide Funktionen arbeiten ohne Konto oder Netzwerk.
 
-**Seit Alpha 4:** [Figuren-, Orts- und Gegenstandskarten mit automatischer Namenserkennung](docs/FIGUREN-UND-ORTE.md). Sie sind auch in Alpha 5 enthalten.
+**Seit Alpha 4:** [Figuren-, Orts- und Gegenstandskarten mit automatischer Namenserkennung](docs/FIGUREN-UND-ORTE.md). Sie sind auch in Alpha 6 enthalten.
 
 Ein **Rechtsklick auf einen Eintrag → In den Papierkorb verschieben** öffnet das Löschmenü für Abschnitte, Ordner, Recherchedateien, Figuren, Orte und Gegenstände. Alternativ den Eintrag mit der Tastatur fokussieren und **Umschalt+F10** drücken. Nach der Bestätigung verschwindet der Eintrag aus der Liste; unter **Papierkorb → Wiederherstellen** kommt er zurück. Ordner umfassen ihre Untereinträge. Die festen Projektbereiche bleiben erhalten; schreibgeschützte Projekte lassen keine Änderungen zu.
 

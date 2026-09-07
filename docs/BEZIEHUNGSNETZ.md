@@ -1,10 +1,10 @@
-# Testversion Beziehungsnetz
+# Beziehungsnetz – Alpha 6
 
-Dieser auf `testing` entwickelte Ausbau basiert auf Alpha 5 und trägt die Kennung `0.1.0-alpha.5+testing.relationships`. Er ist kein neues GitHub-Release. Die Beziehungen werden ausschließlich lokal in der Projektdatei gespeichert; Konten, Internet und neue Abhängigkeiten sind dafür nicht nötig.
+Seit Alpha 6 (`0.1.0-alpha.6`) enthält Schreibatelier das Beziehungsnetz. Beziehungen werden ausschließlich lokal in der Projektdatei gespeichert; Konten, Internet und neue Abhängigkeiten sind dafür nicht nötig.
 
 ## Start und Beispielablauf
 
-Im Projektordner **Testversion Beziehungsnetz.lnk** starten. Auch **Schreibatelier starten.lnk** verweist nach dem Testbuild auf dieselbe Anwendung. Die EXE liegt unter `artifacts/Schreibatelier-testing-relationships/app/Schreibatelier.exe`; der Fenstertitel enthält **Testversion Beziehungsnetz**. Zum eigenen Test ein temporäres Projekt oder eine Projektkopie verwenden.
+Die installierte **Schreibatelier Alpha 6** oder die vollständig entpackte portable **Schreibatelier.exe** starten. Im Quellprojekt öffnet **Schreibatelier starten.lnk** die Anwendung unter `artifacts/Schreibatelier-0.1.0-alpha.6/app/Schreibatelier.exe`. Zum eigenen Test ein temporäres Projekt oder eine Projektkopie verwenden.
 
 1. Links zwei Figuren **Mara** und **Jonas**, den Ort **Hafenstadt** und den Gegenstand **Kompass** anlegen.
 2. Den Ansichtsreiter **Beziehungsnetz** oder **Ansicht → Beziehungsnetz** öffnen. Alle verfügbaren Karten erscheinen mit ausgeschriebenem Kartentyp.

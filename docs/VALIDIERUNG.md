@@ -1,6 +1,22 @@
-# Validierung – Alpha 5 (0.1.0-alpha.5)
+# Validierung – Alpha 6 (0.1.0-alpha.6)
 
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
+
+## Alpha-6-Prüfungen, 7. September 2026
+
+Alpha 6 übernimmt das Beziehungsnetz aus `2a7ca9a` auf `main`. Die Anwendung trägt `0.1.0-alpha.6` ohne Testbuild-Zusatz; Fenster, Startmenüeintrag, Installer und Weboberfläche nennen **Alpha 6**. **Schreibatelier starten.lnk** verweist auf `artifacts/Schreibatelier-0.1.0-alpha.6/app/Schreibatelier.exe`.
+
+- Windows-Release-Build und TypeScript-Prüfung bestanden; Installer, portables ZIP und SHA-256-Datei wurden mit den bestehenden Skripten erstellt. Lizenzinventar: weiterhin 71 Komponenten. Protokoll: `artifacts/alpha6-build.log`.
+- Alle **23 JavaScript-Logiktests**, **194 Core-/Konverterprüfungen** und **acht Prüfungen der echten lokalen Sprachprüfung** bestanden erneut. Protokoll: `artifacts/alpha6-checks.log`.
+- Alle **15 Updateprüfungen** bestanden, einschließlich Versionsvergleich von Alpha 6 gegenüber Alpha 5 und `0.1.0-alpha.5+testing.relationships`. Protokoll: `artifacts/alpha6-update-checks.log`. Die Veröffentlichung verwendet dieselbe öffentliche Updatequelle wie bisher; der Quellcode bleibt privat.
+- Alle **47 Edge-Oberflächentests** bestanden ohne übersprungene oder instabile Tests. Protokoll: `artifacts/alpha6-ui.json`.
+- Die portable ZIP wurde in einen temporären Ordner entpackt, nativ gestartet und nach vollständigem Prozessende in einen anderen Ordner verschoben. Der erneute Start bestätigte Karten, Szenenzuordnungen, Stileinstellungen, Zeitstrahl, **Beziehungen und Kartenpositionen** aus dem vorherigen Programmstart. Farbschema und Notizbuchbreite blieben beim Umzug erhalten.
+- **Installer und Deinstaller bestanden die tatsächliche Ausführung** im temporären Prüfverzeichnis. Der Installer registrierte die Anwendung; die installierte EXE bestand den vollständigen nativen Ablauf mit lokaler Sprachprüfung und Beziehungsnetz. Der Deinstaller entfernte Programm und Registrierung, erhielt aber die angelegte Projektdatei sowie Benutzerdaten. Für Alpha 6 war dieser Test erfolgreich; die früheren Alpha-5-Blockierungen werden dadurch nicht rückwirkend als bestanden gewertet.
+- Paketprotokoll: `artifacts/alpha6-package-checks.log`. Temporäres Prüfverzeichnis: `.work/release-check/3b4f7f00ad6c49dc8b9f281d61f35206/`. Native Ergebnisse wurden als `artifacts/alpha6-native-first.json`, `alpha6-native-final.json` und `alpha6-native-installed.json` gesichert; die Beziehungsnetzaufnahme liegt unter `artifacts/alpha6-native.png`.
+
+Nach dem nativen Paketlauf wurden ausschließlich die abschließenden Begleitdokumente ergänzt und die Pakete neu erzeugt. Ein SHA-256-Abgleich bestätigt die unveränderten Laufzeitdateien gegenüber dem nativ gestarteten portablen Paket; sämtliche ZIP-Einträge und finalen Paketprüfsummen werden geprüft. Nachweise: `artifacts/alpha6-runtime-verification.json`, `artifacts/alpha6-package-verification.json` und `artifacts/alpha6-final-package.log`.
+
+Die Pakete bleiben unsigniert. Die erfolgreiche Ausführung auf diesem Prüfrechner ist keine allgemeine Signatur- oder Vertrauensfreigabe; Installation auf einem zweiten Rechner und längere Alltagsnutzung wurden nicht geprüft. Die folgenden Abschnitte dokumentieren die früheren Entwicklungs- und Releaseprüfungen mit ihren damaligen Ergebnissen.
 
 ## Beziehungsnetz auf testing, 6. September 2026
 

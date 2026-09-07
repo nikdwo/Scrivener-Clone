@@ -1,4 +1,4 @@
-Schreibatelier – Alpha 5 (0.1.0-alpha.5)
+Schreibatelier – Alpha 6 (0.1.0-alpha.6)
 
 Dies ist eine frühe Testversion. Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger.
 
@@ -8,7 +8,7 @@ Pandoc und Typst für erweiterte Import-/Exportformate werden separat eingericht
 
 Die lokale deutsche Sprachprüfung einschließlich Java-Laufzeit ist enthalten. LanguageTool Premium und ChatGPT sind optional; Online-Prüfungen senden Text erst nach deinem ausdrücklichen Start. ChatGPT benötigt die separat installierte Codex CLI und eine eigene Anmeldung.
 
-Neu in Alpha 5: lokale Stilanalyse unter Prüfen sowie der Szenen-Zeitstrahl mit Handlungssträngen unter Ansicht. Beide Funktionen arbeiten ohne Konto oder Netzwerk.
+Neu in Alpha 6: Beziehungsnetz für Figuren, Orte und Gegenstände unter Ansicht. Verbindungen, Notizen und Kartenpositionen werden lokal gespeichert. Stilanalyse und Zeitstrahl bleiben enthalten.
 
 Eine Deinstallation entfernt die Programmdateien. Eigene Projekte, Einstellungen und Sicherungen bleiben erhalten.
 
