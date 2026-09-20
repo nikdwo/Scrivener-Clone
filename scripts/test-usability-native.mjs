@@ -43,7 +43,7 @@ async function run(restart){
       const strands=[{id:randomUUID().replaceAll('-',''),name:'Heimkehr'},{id:randomUUID().replaceAll('-',''),name:'Die Suche'}];
       await bridge(page,'settings',{projectId:p.id,title:p.title,settings:{...p.settings,timeline:{basis:'relative',strands}},baseTitle:p.title,baseSettings:p.settings});
       const d=await bridge(page,'document',{id:scene.id});d.meta.timeline={start:{day:1,time:'09:00'},end:{day:1,time:'12:00'},strandId:strands[0].id};d.meta.storyCardIds=[figure.id];await bridge(page,'save',{documents:[d]});
-      await bridge(page,'create',{parent:folder.id,title:'Zweite Szene',kind:'text',meta:{timeline:{start:{day:1},end:{day:2},strandId:strands[1].id}}});
+      const daily=await bridge(page,'create',{parent:folder.id,title:'Zweite Szene',kind:'text',meta:{timeline:{start:{day:1},end:{day:2},strandId:strands[1].id}}});
       await page.reload();await expect(page.locator('.folder-overview')).toBeVisible();await expect(page.locator(`[data-folder-entry="${scene.id}"]`)).toHaveText('A4-Testtext');
       await page.locator(`[data-folder-entry="${folder.id}"]`).click();await page.locator('[data-action="folderText"]').click();await expect(page.locator('.editor-sheet .tiptap')).toHaveText('Der eigene Ordnertext bleibt erhalten.');
       await page.locator(`[data-doc="${scene.id}"]`).click();await expect(page.locator('.editor-sheet')).toHaveAttribute('data-pagination','ready');
@@ -56,13 +56,20 @@ async function run(restart){
       const grip=page.locator(`[data-timeline-event="${scene.id}"] [data-timeline-drag="end"]`);await grip.focus();await grip.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect.poll(async()=>(await bridge(page,'document',{id:scene.id})).meta.timeline.end.time).toBe('12:02');
       await button.focus();await button.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Escape');
       const rect=await button.boundingBox();await page.mouse.move(rect.x+40,rect.y+20);await page.mouse.down();await page.mouse.move(rect.x+65,rect.y+20,{steps:5});await expect(page.locator('.timeline-drag-tip')).toBeVisible();await page.keyboard.press('Escape');await page.mouse.up();
+      const dailyButton=page.locator(`[data-timeline-scene="${daily.id}"]`);await dailyButton.focus();await dailyButton.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
+      await expect.poll(async()=>(await bridge(page,'document',{id:daily.id})).meta.timeline.start.time).toBe('00:01');
+      await dailyButton.scrollIntoViewIfNeeded();const dailyRect=await dailyButton.boundingBox(),dx=dailyRect.x+dailyRect.width/2,dy=dailyRect.y+dailyRect.height/2;
+      await page.keyboard.down('Shift');await page.mouse.move(dx,dy);await page.mouse.down();await page.mouse.move(dx+1,dy);await expect(page.locator('.timeline-drag-tip')).toContainText('1 Pixel = 1 Minute');await page.mouse.up();await page.keyboard.up('Shift');
+      const dailyTimeline={start:{day:1,time:'00:02'},end:{day:3,time:'00:01'},strandId:strands[1].id};
+      await expect.poll(async()=>(await bridge(page,'document',{id:daily.id})).meta.timeline).toEqual(dailyTimeline);
       await page.locator('#timelineFilter-figure').selectOption(figure.id);await expect(page.locator('[data-timeline-scene]')).toHaveCount(1);await bridge(page,'integrationCapture',{phase:'timeline'});
       const final=await bridge(page,'document',{id:scene.id});expect(final.body).toBe(body);expect(final.meta.timeline).toEqual({start:{day:1,time:'09:01'},end:{day:1,time:'12:02'},strandId:strands[1].id});
       p=await bridge(page,'state');expect(p.documents.map(d=>[d.id,d.parentId,d.position])).toEqual(before.documents.map(d=>[d.id,d.parentId,d.position]));
-      saved={scene:scene.id,folder:folder.id,body,timeline:final.meta.timeline,order:p.documents.map(d=>[d.id,d.parentId,d.position])};
-      checks.push('Ordner, Text und Figur per echter Enter-Eingabe angelegt; Escape verwirft','A4-Seiten mit echtem WebView2-Editor, Ordnertext und dunkle Auswahlliste','Zeitstrahl: Verschieben, Randgriff, Bahnwechsel, Mausvorschau und Escape','SQLite speichert neue Zeiten bei unverändertem Text und unveränderter Reihenfolge');
+      saved={scene:scene.id,folder:folder.id,body,timeline:final.meta.timeline,daily:daily.id,dailyTimeline,order:p.documents.map(d=>[d.id,d.parentId,d.position])};
+      checks.push('Ordner, Text und Figur per echter Enter-Eingabe angelegt; Escape verwirft','A4-Seiten mit echtem WebView2-Editor, Ordnertext und dunkle Auswahlliste','Zeitstrahl: Verschieben, Randgriff, Bahnwechsel, Mausvorschau und Escape','Tagesgenaue Szene minutengenau verschoben: Tastatur und Umschalt-Mausbewegung; Dauer erhalten','SQLite speichert neue Zeiten bei unverändertem Text und unveränderter Reihenfolge');
     }else{
       const d=await bridge(page,'document',{id:saved.scene});expect(d.body).toBe(saved.body);expect(d.meta.timeline).toEqual(saved.timeline);expect(p.documents.map(d=>[d.id,d.parentId,d.position])).toEqual(saved.order);
+      expect((await bridge(page,'document',{id:saved.daily})).meta.timeline).toEqual(saved.dailyTimeline);checks.push('Minutengenaue Zeiten der zuvor tagesgenauen Szene nach Programmneustart erhalten');
       await page.locator(`[data-folder-entry="${saved.folder}"]`).click();await page.locator('[data-action="folderText"]').click();await expect(page.locator('.editor-sheet .tiptap')).toHaveText('Der eigene Ordnertext bleibt erhalten.');
       await page.locator(`[data-doc="${saved.scene}"]`).click();await expect(page.locator('.editor-sheet')).toHaveAttribute('data-pagination','ready',{timeout:30000});await expect(page.locator('body')).toHaveClass(/dark/);
       await page.locator('[data-view="timeline"]').click();await expect(page.locator(`[data-timeline-scene="${saved.scene}"]`)).toContainText('09:01');checks.push('Vollständiger Programmneustart: Ordnertext, Manuskripttext, Zeiten, Bahnzuordnung, Reihenfolge und Farbschema erhalten');

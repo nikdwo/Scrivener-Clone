@@ -117,7 +117,8 @@ export class Timeline {
     const id=handle.dataset.id!,scene=p.documents.find((d:any)=>d.id===id&&!d.deleted);if(!scene)return false;
     const value=structuredClone(scene.meta.timeline??{}),mode=value.start?handle.dataset.timelineDrag!:'place';
     const point=value.start?pointRange(value[mode==='end'?'end':'start']??value.start,p.settings.timeline.basis):null,baseMinute=point?(mode==='end'?point.high:point.low):this.geometry.low;
-    this.gesture={p,id,value,mode,handle,x,y,originX:x,originY:y,anchor:this.minuteAt(x),delta:0,baseMinute,minute:baseMinute,
+    const anchor=this.minuteAt(x);
+    this.gesture={p,id,value,mode,handle,x,y,originX:x,originY:y,anchor,lastX:x,lastMinute:anchor,delta:0,baseMinute,minute:baseMinute,
       strand:value.strandId??'none',keyboard,started:keyboard,next:null};
     if(keyboard)this.previewDrag();return true;
   }
@@ -137,16 +138,17 @@ export class Timeline {
       document.querySelectorAll('.timeline-drop-lane').forEach(el=>el.classList.remove('timeline-drop-lane'));lane.classList.add('timeline-drop-lane');
       const track=lane.querySelector<HTMLElement>('.timeline-track')!.getBoundingClientRect(),scale=this.geometry.width/(this.geometry.high-this.geometry.low);
       g.preview.style.cssText=`position:fixed;left:${track.left+(start.low-this.geometry.low)*scale}px;top:${lane.getBoundingClientRect().top+36}px;width:${Math.max(4,((end?.high??start.high)-start.low)*scale)}px`;
-      const position=formatPoint(minutePoint(g.keyboard?g.mode==='move'?start.low:g.minute:g.cursorMinute??g.minute,basis),basis);
-      g.tip.textContent=`Position: ${position}\nBeginn: ${formatPoint(g.next.start,basis)}${g.next.end?'\nEnde: '+formatPoint(g.next.end,basis):''}\n${lane.getAttribute('aria-label')} · Escape bricht ab${g.keyboard?' · Pfeiltasten ändern, Enter übernimmt':''}`;
+      const position=formatPoint(minutePoint(g.keyboard||g.fine?g.mode==='end'?end.high:start.low:g.cursorMinute??g.minute,basis),basis);
+      g.tip.textContent=`Position: ${position}\nBeginn: ${formatPoint(g.next.start,basis)}${g.next.end?'\nEnde: '+formatPoint(g.next.end,basis):''}\n${lane.getAttribute('aria-label')} · Escape bricht ab${g.keyboard?' · Pfeiltasten ändern, Enter übernimmt':g.fine?' · Feinziehen: 1 Pixel = 1 Minute':' · Umschalt: minutengenau feinziehen'}`;
       g.tip.classList.remove('error');
     }catch(e:any){g.next=null;g.tip.textContent=e.message+' · Escape bricht ab';g.tip.classList.add('error')}
     g.tip.style.left=Math.max(8,Math.min(window.innerWidth-310,g.x+18))+'px';g.tip.style.top=Math.max(8,Math.min(window.innerHeight-g.tip.offsetHeight-8,g.y+20))+'px';
   }
-  private pointerDrag(x:number,y:number){
+  private pointerDrag(x:number,y:number,fine=false){
     const g=this.gesture;if(!g||g.keyboard)return;g.x=x;g.y=y;
-    if(!g.started&&Math.hypot(x-g.originX,y-g.originY)<4)return;g.started=true;
-    g.cursorMinute=this.minuteAt(x);g.delta=g.cursorMinute-g.anchor;g.minute=g.mode==='start'||g.mode==='end'?g.baseMinute+g.delta:g.cursorMinute;
+    if(!g.started&&Math.hypot(x-g.originX,y-g.originY)<(fine?1:4))return;g.started=true;
+    g.cursorMinute=this.minuteAt(x);g.delta+=fine?x-g.lastX:g.cursorMinute-g.lastMinute;
+    g.lastX=x;g.lastMinute=g.cursorMinute;g.fine=fine;g.minute=(g.mode==='start'||g.mode==='end'?g.baseMinute:g.anchor)+g.delta;
     if(g.mode==='move'||g.mode==='place'){
       const lane=document.elementFromPoint(x,y)?.closest<HTMLElement>('[data-timeline-lane]');
       if(lane)g.strand=lane.dataset.timelineLane;
@@ -172,7 +174,7 @@ export class Timeline {
       scroll.scrollLeft+=direction*12;
     }
     const pane=document.getElementById('editorPane')!,paneRect=pane.getBoundingClientRect();if(g.y>paneRect.bottom-35)pane.scrollTop+=10;else if(g.y<paneRect.top+35)pane.scrollTop-=10;
-    this.pointerDrag(g.x,g.y);
+    this.pointerDrag(g.x,g.y,g.fine);
   }
   private async finishDrag(){
     const g=this.gesture;if(!g)return;const next=g.next,started=g.started;this.cancelDrag();
@@ -193,7 +195,7 @@ export class Timeline {
       if(event.button!==0)return;const handle=(event.target as HTMLElement).closest<HTMLElement>('[data-timeline-drag]');if(!handle)return;
       try{if(this.beginDrag(handle,event.clientX,event.clientY)){handle.setPointerCapture(event.pointerId);handle.focus({preventScroll:true});event.preventDefault()}}catch(e:any){this.options.error(e.message)}
     });
-    root.addEventListener('pointermove',event=>this.pointerDrag(event.clientX,event.clientY));
+    root.addEventListener('pointermove',event=>this.pointerDrag(event.clientX,event.clientY,event.shiftKey));
     root.addEventListener('pointerup',()=>{void this.finishDrag()});
     root.addEventListener('pointercancel',()=>{this.cancelDrag();this.render()});
     root.addEventListener('lostpointercapture',()=>{if(this.gesture&&!this.gesture.keyboard){this.cancelDrag();this.render()}});
@@ -207,8 +209,7 @@ export class Timeline {
       if(event.key==='Tab'){this.cancelDrag();return}
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;event.preventDefault();
       if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
-        const approximate=g.mode==='place'||g.mode==='move'?(!g.value.start?.time||g.value.end&&!g.value.end.time):!(g.value[g.mode]??g.value.start)?.time;
-        const step=(approximate?1440:1)*(event.shiftKey?60:1)*(event.key==='ArrowLeft'?-1:1);g.delta+=step;g.minute+=step;
+        const step=(event.shiftKey?60:1)*(event.key==='ArrowLeft'?-1:1);g.delta+=step;g.minute+=step;
       }else if(g.mode==='move'||g.mode==='place'){
         const ids=[...root.querySelectorAll<HTMLElement>('[data-timeline-lane]')].map(el=>el.dataset.timelineLane!),index=ids.indexOf(g.strand);
         g.strand=ids[Math.max(0,Math.min(ids.length-1,index+(event.key==='ArrowUp'?-1:1)))];

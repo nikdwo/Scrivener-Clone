@@ -4,6 +4,8 @@
 
 `0.1.0-alpha.6+testing.usability`, **Testversion Schreibansicht & Zeitstrahl**. Kein Installer und keine Veröffentlichung. Anleitung: [TESTVERSION-BEDIENUNG.md](TESTVERSION-BEDIENUNG.md).
 
+Nachbesserung auf Nutzerwunsch: Alle Zeitstrahlbewegungen sind jetzt minutengenau, auch für bisher tagesgenaue oder gemischte Angaben und neu eingeordnete Szenen. Umschalt beim Ziehen bewegt um eine Minute je Pixel; die Tastatur um eine Minute je Pfeiltaste. Die bisherigen Tagesrundungen wurden entfernt. 24 Logiktests und neun gezielte Zeitstrahl-Oberflächentests bestanden (`artifacts/timeline-minutes-logic.log`, `artifacts/timeline-minutes-ui.json`). Der aktualisierte native Durchlauf bestätigt eine Mausbewegung um genau eine Minute sowie die gespeicherten Zeiten nach vollständigem Programmneustart (`artifacts/usability-native-first.json`, `artifacts/usability-native-restart.json`).
+
 - TypeScript-Prüfung und Windows-Testbuild bestanden (`artifacts/usability-build.log`); vorhandene Lizenzprüfung weiterhin 71 Komponenten, keine zusätzliche Abhängigkeit.
 - **24 JavaScript-Logiktests, 194 Core-/Konverterprüfungen und acht Prüfungen der echten lokalen Sprachprüfung** bestanden (`artifacts/usability-core-checks.log`).
 - **52 Edge-Oberflächentests** bestanden ohne übersprungene oder wiederholte Fehlläufe (`artifacts/usability-ui-final.json`). Die abschließenden sechs gezielten Tests für Seitengrenzen, Auswahl, Dialoge, Ordner und Zeitstrahl bestanden ebenfalls (`artifacts/usability-targeted-final.json`).

@@ -74,6 +74,34 @@ test('usability timeline mouse drag moves, resizes and scrolls with a live time 
   const b=await button.boundingBox(),scroll=page.locator('#timelineScroll'),bounds=await scroll.boundingBox();await page.mouse.move(b!.x+40,b!.y+20);await page.mouse.down();const initial=await scroll.evaluate(el=>el.scrollLeft);await page.mouse.move(bounds!.x+bounds!.width-5,b!.y+20,{steps:5});await expect.poll(()=>scroll.evaluate(el=>el.scrollLeft)).toBeGreaterThan(initial);await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('.timeline-drag-tip')).toHaveCount(0);
 });
 
+test('timeline minute dragging covers daily boundaries, mixed spans, new placements and fine mouse control',async({page})=>{
+  await timelineFixture(page);
+  await page.evaluate(()=>{const p=(window as any).__test.project;p.documents.find((d:any)=>d.id==='scene').meta.timeline={};sessionStorage.setItem('testSavedProject',JSON.stringify(p))});
+  await page.reload();await page.locator('[data-view="timeline"]').click();
+  const texts=await page.evaluate(()=>(window as any).__test.docs.map((d:any)=>[d.id,d.parentId,d.position,d.body]));
+  const fineDrag=async(locator:any,delta:number)=>{
+    await locator.scrollIntoViewIfNeeded();const r=await locator.boundingBox(),x=r.x+r.width/2,y=r.y+r.height/2;
+    await page.keyboard.down('Shift');await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+delta,y);
+    await expect(page.locator('.timeline-drag-tip')).toContainText('1 Pixel = 1 Minute');await page.mouse.up();await page.keyboard.up('Shift');
+  };
+  await fineDrag(page.locator('[data-timeline-scene="scene2"]'),5);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene2').meta.timeline.start)).toEqual({day:1,time:'00:05'});
+  await fineDrag(page.locator('[data-timeline-scene="scene2"]'),1);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene2').meta.timeline.start.time)).toBe('00:06');
+  const daily=page.locator('[data-timeline-scene="scene2"]');await daily.focus();await daily.press('Space');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Enter');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene2').meta.timeline.start.time)).toBe('00:05');
+  await page.locator('[data-timeline-action="in"]').click();
+  await fineDrag(page.locator('[data-timeline-event="third"] [data-timeline-drag="end"]'),-7);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='third').meta.timeline.end)).toEqual({day:3,time:'23:52'});
+  await fineDrag(page.locator('[data-timeline-event="third"] [data-timeline-drag="start"]'),4);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='third').meta.timeline.start.time)).toBe('10:04');
+  const unplanned=page.locator('[data-timeline-scene="scene"]');await unplanned.focus();await unplanned.press('Space');await page.keyboard.press('ArrowRight');await expect(page.locator('.timeline-drag-tip')).toContainText('00:01');await page.keyboard.press('Enter');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline)).toEqual({start:{day:1,time:'00:01'}});
+  expect(await page.evaluate(()=>(window as any).__test.docs.map((d:any)=>[d.id,d.parentId,d.position,d.body]))).toEqual(texts);
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await page.locator('[data-view="timeline"]').click();
+  await expect(page.locator('[data-timeline-scene="third"]')).toContainText('10:04');await expect(page.locator('[data-timeline-scene="third"]')).toContainText('23:52');
+});
+
 test.beforeEach(async({page})=>{
   await page.addInitScript(()=>{
     const body=(text:string)=>JSON.stringify({type:'doc',content:[{type:'paragraph',content:text?[{type:'text',text}]:[]}]});

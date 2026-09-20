@@ -16,11 +16,13 @@ Im Projektordner **Testversion Schreibansicht & Zeitstrahl.lnk** oder **Schreiba
 
 ## Genauigkeit und Tastatur im Zeitstrahl
 
-Uhrzeiten werden minutengenau verändert. Ohne Uhrzeit bleiben Grenzen tagesgenau. Hat eine Szene mindestens eine tagesgenaue Grenze, verschiebt sich die ganze Szene in ganzen Tagen. Die Uhrzeit an der Mausposition dient dann nur der Orientierung.
+Alle Szenen und beide Randgriffe lassen sich minutengenau ziehen. **Umschalt beim Ziehen** ermöglicht Feinarbeit: Ein Mauspixel entspricht einer Minute, unabhängig vom Zoom. Ohne Umschalt folgt das Ziehen dem angezeigten Zeitmaßstab.
 
-Ein Ereignis ohne Ende kann mit einem Randgriff zu einem Zeitraum aufgezogen werden. Eine ungeplante Szene bekommt beim Ablegen auf einer Bahn einen tagesgenauen Beginn ohne Ende. Für die Zuordnung zu einer anderen Bahn muss diese sichtbar sein; bei Bedarf den Handlungsstrangfilter auf **Alle** setzen.
+Bisher tagesgenaue Angaben bekommen beim Ziehen genaue Uhrzeiten. Ausgangspunkt sind die sichtbaren Grenzen: 00:00 für den Beginn und 23:59 für das Ende. Die Vorschau zeigt die neuen Zeiten; erst Loslassen übernimmt sie. Unberührte Szenen behalten ihre bisherigen Angaben.
 
-Mit Tab einen Szenenknopf oder Randgriff erreichen. **Leertaste** startet die Verschiebung, **Links/Rechts** ändern die Zeit und beim Verschieben wechseln **Oben/Unten** die Bahn. **Enter** übernimmt, **Escape** bricht ab. Im Schreibschutz sind diese Änderungen gesperrt; die Ansicht und die Details bleiben zugänglich.
+Ein Ereignis ohne Ende kann mit einem Randgriff zu einem Zeitraum aufgezogen werden. Eine ungeplante Szene bekommt beim Ablegen auf einer Bahn einen minutengenauen Beginn ohne Ende. Für die Zuordnung zu einer anderen Bahn muss diese sichtbar sein; bei Bedarf den Handlungsstrangfilter auf **Alle** setzen.
+
+Mit Tab einen Szenenknopf oder Randgriff erreichen. **Leertaste** startet die Verschiebung, **Links/Rechts** ändern die Zeit um eine Minute; **Umschalt + Links/Rechts** um eine Stunde. Beim Verschieben wechseln **Oben/Unten** die Bahn. **Enter** übernimmt, **Escape** bricht ab. Im Schreibschutz sind diese Änderungen gesperrt; die Ansicht und die Details bleiben zugänglich.
 
 ## Datenerhalt
 
