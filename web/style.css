@@ -32,6 +32,15 @@
 .timeline-strand-entry {padding:12px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .timeline-strand-entry div {display:flex;gap:6px;margin-top:6px}
 .timeline-scene:focus-visible,.timeline-scroll:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+.timeline-span {position:relative;cursor:grab;touch-action:none;overflow:visible}
+.timeline-scene[data-timeline-drag] {cursor:grab;touch-action:none}
+.timeline-grip {position:absolute;top:-7px;width:14px;height:25px;padding:0;border:1px solid var(--accent);background:var(--paper);cursor:ew-resize;z-index:3;touch-action:none}
+.timeline-grip.start {left:-14px}.timeline-grip.end {right:-14px}
+.timeline-uncertain {pointer-events:none}
+.timeline-drop-lane {outline:2px dashed var(--accent);outline-offset:-3px}
+.timeline-drag-preview {height:20px;background:var(--accent);opacity:.6;pointer-events:none;z-index:40;border:2px solid var(--ink)}
+.timeline-drag-tip {position:fixed;z-index:100;max-width:300px;padding:10px;background:var(--paper);color:var(--ink);border:1px solid var(--accent);border-radius:6px;box-shadow:var(--shadow);white-space:pre-line;pointer-events:none;font-size:12px}
+.timeline-drag-tip.error {border-color:var(--danger);color:var(--danger)}
 .viewbar {flex-wrap:wrap;gap:6px}
 
 * {
@@ -112,6 +121,16 @@ textarea {
 
 input:focus,textarea:focus,select:focus {
   border-color:var(--accent)}
+
+/* Native popup options need explicit colors independent of the closed field. */
+select option,select optgroup {color:#000;background:#fff;color-scheme:light}
+select option:disabled {color:#666}
+.folder-toolbar {display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.folder-toolbar h2 {margin:0;overflow-wrap:anywhere}
+.folder-overview ul {list-style:none;margin:0;padding:0}
+.folder-overview li {display:flex;align-items:baseline;gap:10px;padding:9px 0 9px calc(var(--depth)*20px);border-bottom:1px solid var(--line)}
+.folder-overview li button {text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}
+.folder-overview li small {color:var(--muted);margin-left:auto}
 
 button:focus-visible,a:focus-visible {
   outline:2px solid var(--accent);
@@ -518,6 +537,17 @@ button.active {
   padding:48px 55px;
   position:relative;
   border:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+
+.editor-sheet.paginated {width:210mm;max-width:none;min-height:297mm;padding:0;border:0;box-shadow:none;background:transparent;position:relative;margin:0 auto}
+.paginated .a4-flow {position:relative;z-index:1;padding:25mm;display:flow-root}
+.paginated .tiptap {min-height:0}
+.paginated .tiptap img {display:block;max-height:247mm;object-fit:contain}
+.a4-pages {position:absolute;inset:0;pointer-events:none}
+.a4-paper {position:absolute;left:0;width:210mm;height:297mm;background:var(--paper);box-shadow:var(--shadow);border:1px solid var(--line)}
+.a4-paper > span {position:absolute;right:25mm;bottom:10mm;font-size:11px;color:var(--muted);z-index:3}
+.a4-page-margin {position:absolute;left:0;width:210mm;height:calc(50mm + 24px);z-index:2;background:linear-gradient(to bottom,var(--paper) 0 25mm,var(--bg) 25mm calc(25mm + 24px),var(--paper) calc(25mm + 24px) 100%)}
+.a4-gap {user-select:none;pointer-events:none}
+.a4-measure {position:fixed!important;left:-100000px!important;top:0!important;margin:0!important;visibility:hidden!important;pointer-events:none!important}
 
 .section-label {
   font-size:10px;

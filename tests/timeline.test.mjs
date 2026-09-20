@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pointRange,validateTimeline,formatPoint,timelineData,layoutLane,timelineScenes} from '../web/timeline.mjs';
+import {pointRange,validateTimeline,formatPoint,timelineData,layoutLane,timelineScenes,minutePoint,editTimeline} from '../web/timeline.mjs';
+
+test('drag edits preserve duration, precision and directions, including midnight and invalid resize',()=>{
+  const basis='relative',value={start:{day:-1,time:'23:30'},end:{day:0,time:'01:00'},strandId:'a'.repeat(32)};
+  const moved=editTimeline(value,basis,'move',60,'none');assert.deepEqual(moved,{start:{day:0,time:'00:30'},end:{day:0,time:'02:00'}});
+  assert.equal(value.start.day,-1);assert.equal(editTimeline(value,basis,'end',120).end.time,'02:00');
+  assert.throws(()=>editTimeline(value,basis,'end',-60));
+  const mixed={start:{day:1,time:'12:00'},end:{day:2}};
+  assert.deepEqual(editTimeline(mixed,basis,'move',800),{start:{day:2,time:'12:00'},end:{day:3}});
+  assert.deepEqual(editTimeline({start:{day:1}},basis,'end',3*1440+700),{start:{day:1},end:{day:3}});
+  assert.deepEqual(editTimeline({},basis,'place',-1,'none'),{start:{day:-1}});
+  assert.equal(minutePoint(-1,basis).time,'23:59');assert.throws(()=>minutePoint(Infinity,basis));
+  const leap=pointRange({day:'2024-02-29',time:'23:59'},'calendar').low;
+  assert.deepEqual(editTimeline({start:{day:'2024-02-29',time:'23:59'}},'calendar','move',1),{start:{day:'2024-03-01',time:'00:00'}});
+  assert.equal(minutePoint(leap,'calendar').day,'2024-02-29');
+  assert.throws(()=>minutePoint(pointRange({day:'9999-12-31'},'calendar').high+1,'calendar'));
+});
 
 const a='a'.repeat(32),b='b'.repeat(32),card='c'.repeat(32),config={basis:'relative',strands:[{id:a,name:'Mara'},{id:b,name:'Suche'}]};
 const scene=(id,position,timeline={},extra={})=>({id,parentId:'manuscript',kind:'text',position,title:id,meta:{timeline,...extra}});

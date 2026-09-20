@@ -10,10 +10,10 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $application
 $shortcut.WorkingDirectory = Split-Path -Parent $application
 $shortcut.IconLocation = "$application,0"
-$shortcut.Description = if ($application.Contains('Schreibatelier-testing-relationships')) { 'Schreibatelier – Testversion Beziehungsnetz' } else { 'Schreibatelier öffnen' }
+$shortcut.Description = if ($application.Contains('Schreibatelier-testing-usability')) { 'Schreibatelier – Testversion Schreibansicht & Zeitstrahl' } else { 'Schreibatelier öffnen' }
 $shortcut.Save()
-if ($application.Contains('Schreibatelier-testing-relationships')) {
-    Copy-Item -LiteralPath $shortcutPath -Destination (Join-Path $projectRoot 'Testversion Beziehungsnetz.lnk') -Force
+if ($application.Contains('Schreibatelier-testing-usability')) {
+    Copy-Item -LiteralPath $shortcutPath -Destination (Join-Path $projectRoot 'Testversion Schreibansicht & Zeitstrahl.lnk') -Force
 }
 $saved = $shell.CreateShortcut($shortcutPath)
 if ($saved.TargetPath -ne $application -or !(Test-Path -LiteralPath $saved.TargetPath -PathType Leaf)) { throw 'Die Startverknüpfung konnte nicht geprüft werden.' }

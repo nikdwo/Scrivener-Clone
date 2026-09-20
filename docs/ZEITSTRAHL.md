@@ -2,6 +2,8 @@
 
 Der Zeitstrahl gehört zu Alpha 5. Er arbeitet lokal, ohne Konto oder Netzwerk. Die Stilanalyse bleibt enthalten.
 
+Die zusätzliche **Testversion Schreibansicht & Zeitstrahl** auf `testing` ergänzt Verschieben und Größenänderung mit Maus und Tastatur. Die Anleitung steht in [TESTVERSION-BEDIENUNG.md](TESTVERSION-BEDIENUNG.md). Die unten beschriebenen Grenzen beziehen sich auf den ursprünglichen Veröffentlichungsumfang.
+
 ## Starten und einrichten
 
 Alpha 5 installieren und **Schreibatelier Alpha 5** im Startmenü öffnen oder das portable ZIP vollständig entpacken und `Schreibatelier.exe` starten. Im Quellprojekt öffnet **Schreibatelier starten** nach dem Release-Build `artifacts/Schreibatelier-0.1.0-alpha.5/app/Schreibatelier.exe`.

@@ -1,5 +1,19 @@
 # Validierung – Alpha 6 (0.1.0-alpha.6)
 
+## Zusätzliche Testversion auf testing, 20. September 2026
+
+`0.1.0-alpha.6+testing.usability`, **Testversion Schreibansicht & Zeitstrahl**. Kein Installer und keine Veröffentlichung. Anleitung: [TESTVERSION-BEDIENUNG.md](TESTVERSION-BEDIENUNG.md).
+
+- TypeScript-Prüfung und Windows-Testbuild bestanden (`artifacts/usability-build.log`); vorhandene Lizenzprüfung weiterhin 71 Komponenten, keine zusätzliche Abhängigkeit.
+- **24 JavaScript-Logiktests, 194 Core-/Konverterprüfungen und acht Prüfungen der echten lokalen Sprachprüfung** bestanden (`artifacts/usability-core-checks.log`).
+- **52 Edge-Oberflächentests** bestanden ohne übersprungene oder wiederholte Fehlläufe (`artifacts/usability-ui-final.json`). Die abschließenden sechs gezielten Tests für Seitengrenzen, Auswahl, Dialoge, Ordner und Zeitstrahl bestanden ebenfalls (`artifacts/usability-targeted-final.json`).
+- A4-Prüfung mit langen Absätzen, Listen, kurzen und mehrseitigen Tabellenzeilen, hohem Bild, leeren Absätzen, Umlauten und Emoji. Geprüft wurden Textpositionen innerhalb der Seitenränder, unveränderte Dokumente durch reine Darstellung, Auswahl über einen Seitenabstand, Rückgängig, Skalierung und Zurückfließen auf eine Seite nach dem Löschen.
+- Der bisherige Projektwechseltest wurde auf die neue Ordnerübersicht angepasst: Ohne geöffneten Text ist „Abschnitt analysieren“ deaktiviert, nach Auswahl eines Textes wieder bedienbar. Die Prüfung gegen verspätete Einstellungen eines anderen Projekts bleibt erhalten.
+- Native Prüfung über das tatsächlich gebaute WPF-/WebView2-Programm mit temporärem SQLite-Projekt und echten Enter-Eingaben. Ordner, Text und Figur angelegt; Ordnertext erhalten; A4 und aufgeklappte Auswahlliste im Dunkelmodus visuell geprüft; Szenenzeiten und Handlungsstrang mit Griffen/Tastatur verändert, Mausvorschau und Escape geprüft. Ein vollständiger Programmneustart bestätigte Texte, Zeiten, Zuordnung, Reihenfolge und Farbschema. Nachweise: `artifacts/usability-native-first.json`, `artifacts/usability-native-restart.json`, `artifacts/usability-native.log` und die zugehörigen Bildschirmbilder.
+- Die Windows-Tests verwenden ausschließlich eigene temporäre Projekte. Persönliche Projekte, installierte Alpha 6 und öffentliche Downloads werden nicht verändert. Aussagen zur früheren Installerprüfung unten bleiben davon getrennt.
+
+Grenze: Die A4-Seiten sind Editoranzeigen; der PDF-Export setzt weiterhin sein eigenes Ausgabeprofil. Sehr große geöffnete Abschnitte werden für die Seiteneinteilung in Verarbeitungsschritten vermessen; diese Prüfung ersetzt keinen Leistungstest mit beliebig großen Manuskripten.
+
 Prüfrechner: Windows x64, Build 26200, .NET SDK 10.0.400 / Runtime 10.0.11, Microsoft Edge WebView2 Runtime 152.0.4191.62. Native Laufzeit und Browsermodell wurden getrennt geprüft. Die Ergebnisse beziehen sich auf diesen Rechner und die mitgelieferten Testfälle.
 
 ## Alpha-6-Prüfungen, 7. September 2026

@@ -34,6 +34,29 @@ export function formatPoint(point,basis) {
   const label=basis==='relative'?'Tag '+point.day:point.day.split('-').reverse().join('.');
   return label+(point.time?' · '+point.time:' · tagesgenau');
 }
+export function minutePoint(minute,basis,precise=true) {
+  if(!Number.isFinite(minute))throw new Error('Ungültige Zeitposition.');
+  minute=Math.round(minute);const day=Math.floor(minute/1440),clock=minute-day*1440;
+  if(basis==='calendar'&&(day< -719162||day>2932896))throw new Error('Das Datum liegt außerhalb von Jahr 1 bis 9999.');
+  const point={day:basis==='relative'?day:new Date(day*86400000).toISOString().slice(0,10),...(precise?{time:String(Math.floor(clock/60)).padStart(2,'0')+':'+String(clock%60).padStart(2,'0')}:{})};
+  pointRange(point,basis);return point;
+}
+// Move receives a delta; resize/place receive an absolute minute on the project axis.
+export function editTimeline(value,basis,mode,minute,strand) {
+  const next=structuredClone(value),ranges=validateTimeline(value,basis);
+  if(mode==='place')next.start=minutePoint(minute,basis,false);
+  else if(mode==='move'){
+    if(!ranges.start)throw new Error('Dieser Abschnitt hat noch keinen Beginn.');
+    const delta=ranges.start.approximate||ranges.end?.approximate?Math.round(minute/1440)*1440:Math.round(minute);
+    for(const key of ['start','end'])if(next[key])next[key]=minutePoint(pointRange(next[key],basis).low+delta,basis,!!next[key].time);
+  }else if(mode==='start'||mode==='end'){
+    if(!ranges.start)throw new Error('Dieser Abschnitt hat noch keinen Beginn.');
+    if(!next.end)next.end=structuredClone(next.start);
+    next[mode]=minutePoint(minute,basis,!!next[mode].time);
+  }else throw new Error('Unbekannte Zeitänderung.');
+  if(strand!==undefined){if(strand==='none')delete next.strandId;else next.strandId=strand}
+  validateTimeline(next,basis);return next;
+}
 export function timelineScenes(documents) {
   return orderedDocuments(documents.filter(d=>!isStoryCard(d)),'manuscript').filter(d=>['text','script'].includes(d.kind));
 }

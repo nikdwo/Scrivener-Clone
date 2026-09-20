@@ -32,7 +32,7 @@ public sealed class MainWindow : Window
     private const string Assets = "https://assets.schreibatelier.local/";
     private bool integrationTest;
     private bool fileOperation;
-    private static string AppTitle => "Schreibatelier – Alpha 6" + (typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Contains("+testing.") == true ? " · Testversion Beziehungsnetz" : "");
+    private static string AppTitle => "Schreibatelier – Alpha 6" + (typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Contains("+testing.") == true ? " · Testversion Schreibansicht & Zeitstrahl" : "");
     private string BackupRoot => Path.Combine(dataDirectory, "Backups");
 
     public MainWindow(string[] args)
@@ -160,7 +160,7 @@ public sealed class MainWindow : Window
             }
             object? result = action switch
             {
-                "ready" => new { project = store?.GetProject(), recentProjects = recentProjects.Read(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, storageDirectory = dataDirectory, updateInfo = new { version = updates.CurrentVersion, portable = updates.Portable } },
+                "ready" => new { project = store?.GetProject(), recentProjects = recentProjects.Read(), tools = new { pandoc = converter.Pandoc, typst = converter.Typst }, preferences, integrationTest, integrationInspect = integrationTest && arguments.Contains("--integration-inspect"), storageDirectory = dataDirectory, updateInfo = new { version = updates.CurrentVersion, portable = updates.Portable } },
                 "state" => Store.GetProject(),
                 "document" => Store.GetDocument(Str(a, "id")),
                 "save" => Store.SaveDocuments(a["documents"]!.Deserialize<DocumentInfo[]>(Model.Json)!),

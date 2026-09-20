@@ -1,5 +1,7 @@
 # Schreibatelier – Alpha 6
 
+Auf `testing`: **Testversion Schreibansicht & Zeitstrahl** (`0.1.0-alpha.6+testing.usability`). [Anleitung zu A4-Seiten, Ordnerübersicht, Auswahllisten, Zeitstrahl und Enter-Bestätigung](docs/TESTVERSION-BEDIENUNG.md). Start über **Testversion Schreibansicht & Zeitstrahl.lnk** nach `scripts/build.ps1 -Testing`.
+
 Eine eigenständige, lokale Windows-Schreibanwendung für längere Texte. **Alpha 6 (`0.1.0-alpha.6`)**, privates Projekt. Der Arbeitsordner war vor der Umsetzung leer; Anwendung, Datenmodell und Oberfläche wurden neu erstellt.
 
 ## Alpha 6 herunterladen und starten

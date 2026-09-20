@@ -15,6 +15,7 @@ import { Updates } from './updates';
 import { StoryCards } from './storycards';
 import { Timeline } from './timeline';
 import { Relationships } from './relationships';
+import { Pagination,pageExtension } from './pagination';
 import { isStoryCard } from './storycards.mjs';
 import { escapeHtml as h, orderedDocuments, plainText, wordCount, matchesCollection } from './logic.mjs';
 
@@ -39,15 +40,17 @@ let editors: Editor[] = [], reference: Editor | null = null, preferences: any = 
 let storageDirectory = "Windows-Benutzerprofil / AppData / Local / Schreibatelier";
 let combined = false, combinedLimit = 30, referenceId: string | null = null, saveTimer: any, searchTimer: any, saving: Promise<void> | null = null, serial = 0, sessionStart = 0;
 let selectionRequest = 0, renderRequest = 0;
+let folderText: string | null = null;
 let confirmedSettings:any={},confirmedTitle="";
 const cache = new Map<string,any>(), dirty = new Map<string,number>(), collapsed = new Set<string>();
 const emptyBody = JSON.stringify({type:'doc',content:[{type:'paragraph'}]});
+const pagination=new Pagination($('editorPane'));
 const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,saveSettings:saveProjectSettings,modal});
 const updates=new Updates(rpc,flush,async enabled=>{const previous=preferences.checkUpdatesAtStartup;preferences.checkUpdatesAtStartup=enabled;try{await rpc('preferences',preferences)}catch(e){preferences.checkUpdatesAtStartup=previous;throw e}});
 const storyCards=new StoryCards({rpc,project:()=>project,scene:current,editor:()=>active,getDoc,changed,flush,refresh,modal,select:async id=>{await relationships.beforeLeave();if(view==='relationships')view='write';await select(id)},trash:trashDocument,saveSettings:saveProjectSettings,
   beforeLeave:()=>relationships.beforeLeave(),mountRelationships:(target,id)=>relationships.mount(target,id),
   show:()=>{inspector='cards';document.body.classList.add('inspector-visible');renderInspector()},error:message=>toast(message,true)});
-const timeline=new Timeline({project:()=>project,current,selected:()=>selected,visible:()=>view==='timeline',changed,flush,saveSettings:saveProjectSettings,modal,
+const timeline=new Timeline({project:()=>project,current,selected:()=>selected,visible:()=>view==='timeline',changed,flush,saveSettings:saveProjectSettings,modal,getDoc,
   select:async id=>{await flush();inspector='details';document.body.classList.add('inspector-visible');await select(id);document.querySelector('.timeline-details')?.scrollIntoView({block:'start'})},
   openText:async id=>{await flush();view='write';await select(id)},inspector:renderInspector,error:message=>toast(message,true)});
 const relationships=new Relationships({project:()=>project,visible:()=>view==='relationships',openCard:id=>storyCards.open(id),
@@ -112,7 +115,16 @@ function changed(d:any) {
   if(isStoryCard(d)){storyCards.invalidate();proofreading.cardsChanged()}
   timeline.update();
   relationships.update();
+  updateDocumentNames();
   state('Ungespeicherte Änderungen'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>flush().catch(()=>{}),1000); updateStats();
+}
+function updateDocumentNames() {
+  document.querySelectorAll<HTMLElement>('[data-doc] .row-label,[data-folder-entry]').forEach(el=>{
+    const d=info(el.dataset.folderEntry??el.closest<HTMLElement>('[data-doc]')?.dataset.doc);
+    if(d){el.textContent=d.title;el.title=d.title;el.closest('[data-doc]')?.setAttribute('aria-label',d.title)}
+  });
+  const heading=document.querySelector('.folder-overview h2');if(heading)heading.textContent='Inhalt von '+info()?.title;
+  const ancestry=[];let p=info();while(p){ancestry.unshift(p.title);p=info(p.parentId)}$('breadcrumb').textContent=ancestry.join(' / ');
 }
 async function flush():Promise<void> {
   timeline.assertValid();
@@ -137,7 +149,7 @@ function renderRecentProjects(entries:{title:string,filePath:string}[]=[]) {
   $('recentProjects').innerHTML=entries.slice(0,3).map(p=>`<li><button type="button" data-recent-project="${h(p.filePath)}" title="${h(p.filePath)}"><span>${h(p.title||p.filePath.split(/[\\/]/).pop())}</span><small>${h(p.filePath)}</small></button></li>`).join('');
   $('recentProjectsEmpty').classList.toggle('hidden',entries.length>0);
 }
-async function adopt(next:any) { if(!next) return; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); relationships.reset(); if(view==='timeline'||view==='relationships')view='write'; project=next;confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
+async function adopt(next:any) { if(!next) return;folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); relationships.reset(); if(view==='timeline'||view==='relationships')view='write'; project=next;confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
 
 function renderTree() {
   if(!project) return;
@@ -161,18 +173,18 @@ function renderTree() {
 }
 $('tree').addEventListener('toggle',event=>{const group=event.target as HTMLDetailsElement,id=group.dataset.storyGroup;if(id)group.open?collapsed.delete(id):collapsed.add(id)},true);
 function renderCollections() { $('collectionList').innerHTML=(project?.settings.collections ?? []).map((c:any,i:number)=>`<button class="collection-item ${collection===c?'active':''}" data-collection="${i}">◌ ${h(c.title)}</button>`).join(''); }
-function destroyEditors() { proofreading.reset();editors.forEach(e=>e.destroy()); editors=[]; active=null; }
-function extensions(documentId:string) {
+function destroyEditors() { pagination.reset();proofreading.reset();editors.forEach(e=>e.destroy()); editors=[]; active=null; }
+function extensions(documentId:string,paged=false) {
   const Footnote=Node.create({name:'footnote',group:'inline',inline:true,atom:true,addAttributes(){return{id:{default:null},text:{default:''}}},parseHTML(){return[{tag:'span[data-footnote]'}]},renderHTML({HTMLAttributes}){return['span',mergeAttributes(HTMLAttributes,{'data-footnote':HTMLAttributes.id,'data-note':HTMLAttributes.text,class:'footnote',title:HTMLAttributes.text,contenteditable:'false'}),'']}});
   const Comment=Mark.create({name:'comment',inclusive:false,addAttributes(){return{id:{default:null},text:{default:''}}},parseHTML(){return[{tag:'span[data-comment]'}]},renderHTML({HTMLAttributes}){return['span',mergeAttributes(HTMLAttributes,{'data-comment':HTMLAttributes.id,'data-note':HTMLAttributes.text,class:'comment',title:HTMLAttributes.text}),0]}});
   const Script=Node.create({name:'script',group:'block',content:'inline*',addAttributes(){return{element:{default:'action'}}},parseHTML(){return[{tag:'p[data-element]'}]},renderHTML({HTMLAttributes}){return['p',{'data-element':HTMLAttributes.element},0]}});
-  return [StarterKit.configure({link:{openOnClick:false,autolink:false}}),Image.configure({allowBase64:false}),TableKit.configure({table:{resizable:true}}),Highlight.configure({multicolor:true}),TextStyleKit,TextAlign.configure({types:['heading','paragraph']}),Subscript,Superscript,Footnote,Comment,Script,proofreading.extension,storyCards.extension(documentId)];
+  return [StarterKit.configure({link:{openOnClick:false,autolink:false}}),Image.configure({allowBase64:false}),TableKit.configure({table:{resizable:true}}),Highlight.configure({multicolor:true}),TextStyleKit,TextAlign.configure({types:['heading','paragraph']}),Subscript,Superscript,Footnote,Comment,Script,proofreading.extension,storyCards.extension(documentId),...(paged?[pageExtension]:[])];
 }
 function makeEditor(element:HTMLElement,d:any,editable=true) {
-  const editor=new Editor({element,extensions:extensions(d.id),content:JSON.parse(d.body ?? emptyBody),editable:editable&&!project.readOnly,
+  const editor=new Editor({element,extensions:extensions(d.id,editable),content:JSON.parse(d.body ?? emptyBody),editable:editable&&!project.readOnly,
     editorProps:{attributes:{'aria-label':`Text: ${d.title}`,spellcheck:'true',lang:project.settings.proofLanguage??'de-DE'},transformPastedHTML:html=>DOMPurify.sanitize(html,{FORBID_TAGS:['img','iframe','script','style','object','embed'],FORBID_ATTR:['style','onerror','onclick']}),
       handleDOMEvents:{drop:(_view,event)=>{if((event as DragEvent).dataTransfer?.files.length){event.preventDefault();toast('Bilder bitte über „Bild“ importieren.');return true}return false}}},
-    onUpdate:({editor})=>{d.body=JSON.stringify(editor.getJSON());changed(d);proofreading.changed(editor)},
+    onUpdate:({editor})=>{d.body=JSON.stringify(editor.getJSON());changed(d);proofreading.changed(editor);if(editable)pagination.changed()},
     onFocus:()=>{if(editable){active=editor;proofreading.activated(editor);if(selected!==d.id){selected=d.id;$<HTMLInputElement>('documentTitle').value=d.title;renderTree();renderInspector()} }},
     onSelectionUpdate:()=>{if(editable){active=editor;proofreading.selectionChanged(editor)}updateFormatButtons()},
   });
@@ -181,7 +193,7 @@ function makeEditor(element:HTMLElement,d:any,editable=true) {
 async function select(id:string) {
   await relationships.beforeLeave();
   if(isStoryCard(info(id))&&!info(id).deleted){await storyCards.open(id);return}
-  const request=++selectionRequest;await flush();const d=await getDoc(id);if(request!==selectionRequest)return;selected=id;collection=null;if(view==='trash')view='write';renderTree();
+  const request=++selectionRequest;await flush();const d=await getDoc(id);if(request!==selectionRequest)return;if(selected!==id)folderText=null;selected=id;collection=null;if(view==='trash')view='write';renderTree();
   $<HTMLInputElement>('documentTitle').value=d.title; $<HTMLInputElement>('documentTitle').disabled=project.readOnly||d.deleted;
   const ancestry=[]; let p=info(id); while(p){ancestry.unshift(p.title);p=info(p.parentId)} $('breadcrumb').textContent=ancestry.join(' / ');
   $('documentStatus').textContent=d.meta.status ?? 'Entwurf'; await renderView(); renderInspector(); updateStats();
@@ -189,6 +201,7 @@ async function select(id:string) {
 function displayDocs() { if(collection) return project.documents.filter((d:any)=>!d.deleted&&matchesCollection(d,collection)); return orderedDocuments(project.documents.filter((d:any)=>!isStoryCard(d)),selected,false); }
 async function renderView() {
   const request=++renderRequest;
+  timeline.cancelDrag();
   timeline.remember();
   relationships.remember();
   destroyEditors(); const pane=$('editorPane'); pane.innerHTML='';
@@ -202,6 +215,8 @@ async function renderView() {
   if(collection || view==='board') { renderBoard(); return; }
   if(view==='outline') { renderOutline(); return; }
   if(d.kind==='asset') { renderAsset(pane,d); return; }
+  if(d.kind==='folder'&&!combined&&folderText!==d.id){renderFolder(d);await renderReference();return}
+  if(d.kind==='folder')pane.insertAdjacentHTML('beforeend','<div class="folder-toolbar"><button data-action="folderOverview">← Zur Übersicht</button></div>');
   const sheet=document.createElement('div'); sheet.className='editor-sheet'; pane.append(sheet);
   const list=combined ? orderedDocuments(project.documents.filter((d:any)=>!isStoryCard(d)),selected,true).filter((d:any)=>d.kind!=='asset') : [d];
   // Only requested sections are materialized, not the entire project.
@@ -209,8 +224,14 @@ async function renderView() {
     const doc=await getDoc(item.id);if(request!==renderRequest)return; if(combined){const label=document.createElement('div');label.className='section-label';label.textContent=doc.title;sheet.append(label)}
     const el=document.createElement('div'); sheet.append(el); const editor=makeEditor(el,doc); editors.push(editor); if(item.id===selected)active=editor;
   }
-  if(list.length>combinedLimit){const button=document.createElement('button');button.dataset.action='moreSections';button.textContent=`Weitere Abschnitte laden (${combinedLimit} von ${list.length})`;sheet.append(button)}
+  if(list.length>combinedLimit){const button=document.createElement('button');button.dataset.action='moreSections';button.textContent=`Weitere Abschnitte laden (${combinedLimit} von ${list.length})`;pane.append(button)}
+  pagination.mount(sheet,editors);
   if(!active) active=editors[0] ?? null; await renderReference();
+}
+function renderFolder(d:any) {
+  const docs=orderedDocuments(project.documents.filter((x:any)=>!isStoryCard(x)),d.id),depths=new Map([[d.id,-1]]);
+  $('editorPane').innerHTML=`<section class="folder-overview"><div class="folder-toolbar"><h2>Inhalt von ${h(d.title)}</h2><button data-action="folderText">Ordnertext</button></div><p class="muted">Ordner und Abschnitte in ihrer Projektreihenfolge.</p><ul aria-label="Ordnerinhalt">${docs.map((item:any)=>{const depth=(depths.get(item.parentId)??-1)+1;depths.set(item.id,depth);return `<li style="--depth:${depth}"><span aria-hidden="true">${item.kind==='folder'?'▱':item.kind==='asset'?'◇':'≡'}</span><button type="button" data-folder-entry="${h(item.id)}" title="${h(item.title)}">${h(item.title)}</button><small>${item.kind==='folder'?'Ordner':item.kind==='asset'?'Recherchedatei':'Text'}</small></li>`}).join('')}</ul>${docs.length?'':'<p class="muted">Dieser Ordner ist noch leer.</p>'}</section>`;
+  $('formatbar').classList.add('hidden');
 }
 function renderAsset(target:HTMLElement,d:any) {
   const id=d.meta.assetId, mime=d.meta.mime??'', src=`https://assets.schreibatelier.local/${encodeURIComponent(id)}`;
@@ -263,9 +284,11 @@ function renderInspector() {
 
 async function modal(title:string,body:string,button='Übernehmen'):Promise<FormData|null> {
   const dialog=$<HTMLDialogElement>('dialog');if(dialog.open)await new Promise<void>(resolve=>{dialog.addEventListener('close',()=>resolve(),{once:true});dialog.close('cancel')});$('dialogTitle').textContent=title;$('dialogBody').innerHTML=body;$('dialogSubmit').textContent=button;
-  document.querySelector('.dialog-actions [value="cancel"]')!.classList.toggle('hidden',button==='Schließen');dialog.showModal();
+  document.querySelector('.dialog-actions [value="cancel"]')!.classList.toggle('hidden',button==='Schließen');dialog.returnValue='cancel';dialog.showModal();
+  dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]),textarea:not([disabled]),select:not([disabled])')?.focus();
   return new Promise(resolve=>dialog.addEventListener('close',()=>resolve(dialog.returnValue==='ok'?new FormData($<HTMLFormElement>('dialogForm')):null),{once:true}));
 }
+document.querySelectorAll<HTMLButtonElement>('#dialog [value="cancel"]').forEach(button=>{button.type='button';button.addEventListener('click',()=>$<HTMLDialogElement>('dialog').close('cancel'))});
 async function textPrompt(title:string,label:string,value='',multiline=false) {const data=await modal(title,multiline?area(label,'value',value):field(label,'value',value));return data?String(data.get('value')):null}
 async function requireWrite() { if(!project)throw new Error('Bitte zuerst ein Projekt öffnen.');if(project.readOnly)throw new Error('Dieses Projekt ist schreibgeschützt.');await flush(); }
 async function addDocument(kind='text',template?:string) {
@@ -334,6 +357,8 @@ async function output(preview=false) {
 }
 
 const actions:Record<string,()=>any>={
+  folderText:async()=>{await flush();folderText=selected;await renderView()},
+  folderOverview:async()=>{await flush();folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false;await renderView()},
   updates:()=>updates.check(),
   new:async()=>{await flush();await adopt(await rpc('new'))},open:async()=>{await flush();await adopt(await rpc('open'))},save:async()=>{await flush();toast('Alle Änderungen sind gespeichert.')},
   moreSections:async()=>{await flush();combinedLimit+=30;await renderView()},
@@ -423,6 +448,7 @@ contextTrash.addEventListener('click',()=>{
 document.addEventListener('pointerdown',event=>{if((event.target as HTMLElement).closest('[data-action="proof"],[data-inspector="proof"],[data-inspector="cards"],[data-story-action="link"]'))event.preventDefault()});
 document.addEventListener('click',event=>{
   const el=event.target as HTMLElement;
+  const folderEntry=el.closest<HTMLElement>('[data-folder-entry]');if(folderEntry){void select(folderEntry.dataset.folderEntry!).catch(e=>toast(e.message,true));return}
   const recent=el.closest<HTMLButtonElement>('[data-recent-project]');if(recent){recent.disabled=true;void(async()=>{await flush();await adopt(await rpc('openRecent',{path:recent.dataset.recentProject}))})().catch(e=>toast(e.message,true)).finally(()=>{recent.disabled=false});return}
   const link=el.closest<HTMLAnchorElement>('.tiptap a');if(link){event.preventDefault();const href=link.getAttribute('href')??'';if(href.startsWith('#')){const id=href.slice(1);if(info(id)&&!info(id).deleted){if(!isStoryCard(info(id)))view='write';void select(id).catch(e=>toast(e.message,true))}else toast('Der verknüpfte Abschnitt ist nicht verfügbar.',true)}else if(/^(https?:\/\/|mailto:)/i.test(href))window.open(href,'_blank','noopener');return}
   const noteItem=el.closest<HTMLElement>('[data-note-id]');if(noteItem){void editNote(noteItem.dataset.noteId!).catch(e=>toast(e.message,true));return}
@@ -432,7 +458,7 @@ document.addEventListener('click',event=>{
   const viewButton=el.closest<HTMLElement>('[data-view]');if(viewButton){void setView(viewButton.dataset.view!).catch(e=>toast(e.message,true));return}
   const tab=el.closest<HTMLElement>('[data-inspector]');if(tab){void relationships.beforeLeave().then(()=>{inspector=tab.dataset.inspector!;renderInspector()}).catch(e=>toast(e.message,true));return}
   const collapse=el.closest<HTMLElement>('[data-collapse]');if(collapse){const id=collapse.dataset.collapse!;collapsed.has(id)?collapsed.delete(id):collapsed.add(id);renderTree();return}
-  const doc=el.closest<HTMLElement>('[data-doc]');if(doc){void select(doc.dataset.doc!).catch(e=>toast(e.message,true));return}
+  const doc=el.closest<HTMLElement>('[data-doc]');if(doc){folderText=null;void select(doc.dataset.doc!).catch(e=>toast(e.message,true));return}
   const collect=el.closest<HTMLElement>('[data-collection]');if(collect){void relationships.beforeLeave().then(()=>flush()).then(()=>{collection=project.settings.collections[Number(collect.dataset.collection)];renderBoard();renderCollections()}).catch(e=>toast(e.message,true));return}
   const fmt=el.closest<HTMLElement>('[data-format]');if(fmt&&active){const format=fmt.dataset.format!;const chain=active.chain().focus();if(['left','center','right','justify'].includes(format))chain.setTextAlign(format).run();else(chain as any)['toggle'+format[0].toUpperCase()+format.slice(1)]?.().run();updateFormatButtons();return}
   const asset=el.closest<HTMLElement>('[data-asset-download]');if(asset){void rpc('exportAsset',{id:asset.dataset.assetDownload}).catch(e=>toast(e.message,true));return}
@@ -606,4 +632,4 @@ async function integrationCheck() {
     }
     for(const [mime,phase] of [['application/pdf','pdf'],['text/html','html']]){const asset=project.documents.find((x:any)=>x.meta.mime===mime);if(asset){view='write';await select(asset.id);await new Promise(resolve=>setTimeout(resolve,1200));await rpc('integrationCapture',{phase});checks.push(phase+'-Rechercheansicht geladen')}}await setView('board');await select('manuscript');if(!$('editorPane').textContent?.includes(d.title))throw new Error('Pinnwand fehlt');checks.push('Gemeinsame Pinnwanddaten');await rpc('preferences',preferences);checks.push('Einstellungen gespeichert');await integrationCardCheck(checks);await integrationStyleCheck(checks);await integrationTimelineCheck(checks);await integrationRelationshipCheck(checks);await rpc('integrationResult',{ok:true,checks});}catch(e:any){await rpc('integrationResult',{ok:false,error:e.message,checks})}
 }
-void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.updateInfo){updates.configure(result.updateInfo,preferences.checkUpdatesAtStartup!==false);if(!result.integrationTest&&preferences.checkUpdatesAtStartup!==false)void updates.check(true)}if(result.integrationTest)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});
+void rpc('ready').then(async result=>{preferences=result.preferences??{};tools=result.tools??{};storageDirectory=result.storageDirectory??storageDirectory;renderRecentProjects(result.recentProjects??[]);document.body.classList.toggle('dark',preferences.theme==='dark');if(Number.isFinite(preferences.inspectorWidth))updateInspectorSize(preferences.inspectorWidth);if(result.project)await adopt(result.project);if(result.updateInfo){updates.configure(result.updateInfo,preferences.checkUpdatesAtStartup!==false);if(!result.integrationTest&&preferences.checkUpdatesAtStartup!==false)void updates.check(true)}if(result.updateInfo?.version?.includes('+testing.usability')){document.title='Schreibatelier – Testversion Schreibansicht & Zeitstrahl';document.querySelector('.brand small')!.textContent='TESTVERSION · SCHREIBANSICHT & ZEITSTRAHL'}if(result.integrationTest&&!result.integrationInspect)await integrationCheck()}).catch(e=>{state('Start fehlgeschlagen',true);toast(e.message,true)});

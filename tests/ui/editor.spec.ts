@@ -1,5 +1,79 @@
 import {test,expect} from '@playwright/test';
 
+test('usability dialogs confirm once with Enter and preserve cancel, validation and multiline input',async({page})=>{
+  await page.locator('[data-action="newFolder"]').click();await page.locator('#value').fill('Per Enter angelegt');await page.locator('#value').press('Enter');
+  await expect(page.locator('#dialog')).toBeHidden();await expect(page.locator('#tree .row-label').filter({hasText:'Per Enter angelegt'})).toHaveCount(1);
+  await expect(page.locator('.folder-overview')).toBeVisible();await page.locator('[data-action="newDocument"]').first().click();await page.locator('#value').fill('Enter-Text');await page.locator('#value').press('Enter');
+  await expect(page.locator('#documentTitle')).toHaveValue('Enter-Text');await expect(page.locator('.editor-sheet')).toHaveAttribute('data-pagination','ready');
+  await page.locator('[data-action="newFolder"]').click();await page.locator('#value').fill('Nicht anlegen');await page.keyboard.press('Escape');await expect(page.locator('#tree')).not.toContainText('Nicht anlegen');
+  await page.locator('[data-action="newStoryFigure"]').click();await page.locator('#storyNewName').fill('Enter-Mara');await page.locator('#storyNewName').press('Enter');await expect(page.locator('#storyTitle')).toHaveValue('Enter-Mara');
+  await page.locator('[data-action="newFolder"]').click();await page.locator('#dialog [value="cancel"]').last().focus();await page.keyboard.press('Enter');await expect(page.locator('#dialog')).toBeHidden();
+  await page.locator('[data-action="insertFootnote"]').click();await page.locator('#value').fill('Erste Zeile');await page.locator('#value').press('Enter');await page.locator('#value').pressSequentially('Zweite Zeile');await expect(page.locator('#value')).toHaveValue('Erste Zeile\nZweite Zeile');await expect(page.locator('#dialog')).toBeVisible();await page.keyboard.press('Escape');
+  await page.locator('[data-action="proof"]').click();await page.locator('#proofEngine').selectOption('premium');await page.locator('[data-proof-action="premiumConnect"]').click();await page.locator('#ltEmail').fill('ungueltig');await page.locator('#ltEmail').press('Enter');await expect(page.locator('#dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.locator('#dialog')).toBeHidden();
+});
+
+test('usability folder overview preserves hierarchy and existing folder text',async({page})=>{
+  await expect(page.locator('.folder-overview')).toBeVisible();await expect(page.locator('[data-folder-entry]')).toHaveText(['Kapitel 1 · Ankunft','Das Haus am See','Ein unerwarteter Brief']);
+  expect(await page.locator('[data-folder-entry="scene"]').evaluate(el=>getComputedStyle(el.parentElement!).paddingLeft)).toBe('20px');
+  await page.locator('#documentTitle').fill('Mein Manuskript');await expect(page.locator('.folder-overview h2')).toHaveText('Inhalt von Mein Manuskript');
+  await page.locator('[data-action="folderText"]').click();await page.locator('.editor-sheet .tiptap').fill('Eigener Manuskripttext bleibt erhalten.');await page.keyboard.press('Control+s');await page.locator('[data-action="folderOverview"]').click();await expect(page.locator('.folder-overview')).toBeVisible();
+  await page.locator('[data-action="folderText"]').click();await page.locator('#tree [data-doc="manuscript"]').click();await expect(page.locator('.folder-overview')).toBeVisible();
+  await page.locator('[data-folder-entry="chapter"]').click();await expect(page.locator('[data-folder-entry]')).toHaveCount(2);await page.locator('[data-folder-entry="scene"]').click();await page.locator('#documentTitle').fill('Neuer Szenenname');await expect(page.locator('#tree [data-doc="scene"]')).toContainText('Neuer Szenenname');
+  await page.locator('#tree [data-doc="manuscript"]').click();await expect(page.locator('[data-folder-entry="scene"]')).toHaveText('Neuer Szenenname');await page.locator('[data-action="folderText"]').click();await expect(page.locator('.editor-sheet .tiptap')).toHaveText('Eigener Manuskripttext bleibt erhalten.');
+  await page.locator('[data-action="folderOverview"]').click();await page.locator('#combined').check();await expect(page.locator('.editor-sheet .tiptap')).toHaveCount(4);
+});
+
+test('usability A4 pages flow across paragraphs, lists, tables and sections without changing documents',async({page})=>{
+  test.setTimeout(90000);
+  await page.route('https://assets.schreibatelier.local/test-page-image',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="1800"><rect width="500" height="1800" fill="#426856"/></svg>'}));
+  await page.evaluate(()=>{
+    const p=(window as any).__test.project,text=(s:string)=>({type:'text',text:s}),paragraph=(s:string)=>({type:'paragraph',content:[text(s)]});
+    const words='Mara betrachtet den Garten und erzählt von ihrer Reise. '.repeat(160);
+    p.documents.find((d:any)=>d.id==='scene').body=JSON.stringify({type:'doc',content:[paragraph(words),{type:'bulletList',content:Array.from({length:4},()=>({type:'listItem',content:[paragraph(words.slice(0,650))]}))},{type:'table',content:Array.from({length:6},(_,i)=>({type:'tableRow',content:[{type:'tableCell',content:[paragraph(words.slice(0,i===5?3200:700))]},{type:'tableCell',content:[paragraph('Zweite Spalte '+words.slice(0,i===5?2400:450))]}]}))},{type:'image',attrs:{src:'https://assets.schreibatelier.local/test-page-image',alt:'Hohes Testbild'}},...Array.from({length:36},()=>({type:'paragraph'})),paragraph('Abschluss mit Umlauten: Äpfel, Grüße und 🌳.') ]});
+    sessionStorage.setItem('testSavedProject',JSON.stringify(p));
+  });await page.reload();await page.locator('#tree [data-doc="scene"]').click();
+  const sheet=page.locator('.editor-sheet');await expect(sheet).toHaveAttribute('data-pagination','ready',{timeout:60000});expect(Number(await sheet.getAttribute('data-pages'))).toBeGreaterThan(3);
+  const original=await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body),canonical=await page.locator('.editor-sheet .tiptap').evaluate(el=>(el as any).editor.getJSON());
+  const bad=await sheet.evaluate(el=>{
+    const zoom=el.getBoundingClientRect().width/(210*96/25.4),origin=el.getBoundingClientRect().top,stride=297*96/25.4+24,margin=25*96/25.4,bad:any[]=[];
+    const walker=document.createTreeWalker(el.querySelector('.tiptap')!,NodeFilter.SHOW_TEXT);let n:Node|null;
+    while(n=walker.nextNode()){if(n.parentElement?.closest('.a4-gap')||!n.textContent?.trim())continue;const r=document.createRange();r.selectNodeContents(n);for(const rect of r.getClientRects()){if(!rect.width)continue;const top=(rect.top-origin)/zoom,bottom=(rect.bottom-origin)/zoom,index=Math.floor(top/stride);if(top-index*stride<margin-2||bottom-index*stride>297*96/25.4-margin+2)bad.push({top,bottom,text:n.textContent?.slice(0,30)})}}
+    return bad.slice(0,10);
+  });expect(bad).toEqual([]);
+  const count=await sheet.getAttribute('data-pages');expect(Number(count)).toBeLessThan(35);await page.setViewportSize({width:1000,height:760});await expect(sheet).toHaveAttribute('data-pages',count!);await page.screenshot({path:'artifacts/usability-a4.png'});
+  await page.locator('[data-action="theme"]').click();await expect(page.locator('#paragraphStyle option').first()).toHaveCSS('color','rgb(0, 0, 0)');await expect(page.locator('#paragraphStyle option').first()).toHaveCSS('background-color','rgb(255, 255, 255)');
+  await page.keyboard.press('Control+s');expect(await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').body)).toBe(original);
+  await page.locator('.editor-sheet .tiptap').focus();await page.keyboard.press('Control+End');await page.keyboard.type(' ENDE');await expect(sheet).toHaveAttribute('data-pagination','ready');await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');await expect.poll(()=>page.evaluate(()=>JSON.parse((window as any).__test.docs.find((d:any)=>d.id==='scene').body))).toEqual(canonical);
+  await expect(sheet).toHaveAttribute('data-pagination','ready');
+  await page.locator('.editor-sheet .tiptap').evaluate(el=>{const editor=(el as any).editor,gap=el.querySelector('.a4-gap')!;const pos=editor.view.posAtDOM(gap.parentNode,[...gap.parentNode!.childNodes].indexOf(gap));editor.commands.setTextSelection({from:pos-3,to:pos+3});editor.commands.focus()});
+  await page.keyboard.type('SEITENGRENZE');await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');await expect.poll(()=>page.evaluate(()=>JSON.parse((window as any).__test.docs.find((d:any)=>d.id==='scene').body))).toEqual(canonical);
+  await page.locator('#tree [data-doc="chapter"]').click();await page.locator('#combined').check();await expect(sheet).toHaveAttribute('data-pagination','ready',{timeout:60000});await expect(page.locator('.editor-sheet .tiptap')).toHaveCount(3);
+  await page.locator('#combined').uncheck();await page.locator('#tree [data-doc="scene"]').click();await page.locator('.editor-sheet .tiptap').fill('Kurzer Text nach dem Löschen.');await expect(sheet).toHaveAttribute('data-pages','1');
+});
+
+test('usability timeline supports keyboard move, resize, lane changes, cancel and failed saves',async({page})=>{
+  await timelineFixture(page);const scene=page.locator('[data-timeline-scene="scene"]');
+  await scene.focus();await scene.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowDown');await expect(page.locator('.timeline-drag-tip')).toContainText('09:01');await page.keyboard.press('Enter');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline)).toEqual({start:{day:2,time:'09:01'},end:{day:2,time:'12:01'},strandId:'b'.repeat(32)});
+  const end=page.locator('[data-timeline-event="scene"] [data-timeline-drag="end"]');await end.focus();await end.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline.end.time)).toBe('12:02');
+  await scene.focus();await scene.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Escape');await expect(page.locator('.timeline-drag-tip')).toHaveCount(0);
+  await page.evaluate(()=>(window as any).__test.failSave=true);await scene.focus();await scene.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(page.locator('#saveState')).toContainText('fehlgeschlagen');
+  await page.evaluate(()=>(window as any).__test.failSave=false);await page.keyboard.press('Control+s');await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline.start.time)).toBe('09:02');
+  await page.evaluate(()=>sessionStorage.setItem('testSavedProject',JSON.stringify((window as any).__test.project)));await page.reload();await page.locator('[data-view="timeline"]').click();await expect(page.locator('[data-timeline-scene="scene"]')).toContainText('09:02');
+});
+
+test('usability timeline mouse drag moves, resizes and scrolls with a live time preview',async({page})=>{
+  await timelineFixture(page);await page.locator('[data-timeline-action="in"]').click();await page.locator('[data-timeline-action="in"]').click();
+  const event=page.locator('[data-timeline-event="scene"]'),button=event.locator('[data-timeline-scene]');await button.scrollIntoViewIfNeeded();
+  const start=await button.boundingBox();await page.mouse.move(start!.x+50,start!.y+20);await page.mouse.down();await page.mouse.move(start!.x+100,start!.y+20,{steps:5});await expect(page.locator('.timeline-drag-tip')).toContainText('Position:');
+  await page.mouse.up();await expect(page.locator('.timeline-drag-tip')).toHaveCount(0);await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline.start.time)).not.toBe('09:00');
+  const before=await page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline);
+  const grip=event.locator('[data-timeline-drag="end"]');await grip.scrollIntoViewIfNeeded();const box=await grip.boundingBox();await page.mouse.move(box!.x+7,box!.y+12);await page.mouse.down();await page.mouse.move(box!.x+30,box!.y+12,{steps:5});await page.mouse.up();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline.end)).not.toEqual(before.end);
+  const b=await button.boundingBox(),scroll=page.locator('#timelineScroll'),bounds=await scroll.boundingBox();await page.mouse.move(b!.x+40,b!.y+20);await page.mouse.down();const initial=await scroll.evaluate(el=>el.scrollLeft);await page.mouse.move(bounds!.x+bounds!.width-5,b!.y+20,{steps:5});await expect.poll(()=>scroll.evaluate(el=>el.scrollLeft)).toBeGreaterThan(initial);await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('.timeline-drag-tip')).toHaveCount(0);
+});
+
 test.beforeEach(async({page})=>{
   await page.addInitScript(()=>{
     const body=(text:string)=>JSON.stringify({type:'doc',content:[{type:'paragraph',content:text?[{type:'text',text}]:[]}]});
@@ -434,7 +508,8 @@ test('style analysis pending preference save cannot overwrite a different projec
   await openStyleAnalysis(page,styleSample);
   await page.evaluate(()=>{(window as any).__test.settingsDelay=300});await page.locator('#styleWording').click();
   await page.evaluate(()=>{const next=(window as any).__test.project;next.id='another-project';next.title='Zweites Projekt';next.settings={wordTarget:1234};document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
-  await expect(page.locator('#projectLabel')).toHaveText('Zweites Projekt');await expect(page.locator('#proofRun')).toBeEnabled();
+  await expect(page.locator('#projectLabel')).toHaveText('Zweites Projekt');await expect(page.locator('.folder-overview')).toBeVisible();await expect(page.locator('#proofRun')).toBeDisabled();
+  await page.locator('[data-doc="scene"]').click();await expect(page.locator('#proofRun')).toBeEnabled();
   expect(await page.evaluate(()=>(window as any).__test.project.settings)).toEqual({wordTarget:1234});
   await page.locator('[data-doc="scene"]').click();await page.locator('[data-action="proof"]').click();await expect(page.locator('#styleWording')).toBeChecked();
 });
@@ -669,7 +744,7 @@ test('ambiguous names, explicit links and recognition toggle preserve text and e
   await expect(page.locator('#storyField-notes')).toHaveValue('Diese Notiz bleibt beim Umschalten erhalten.');
   await page.locator('#storyRecognition').check();await expect(page.locator('.editor-sheet [data-story-ids]')).toHaveCount(1);
   await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Verweis');
-  await page.keyboard.press('Control+Shift+ArrowLeft');await page.locator('[data-story-action="link"]').click();
+  await page.keyboard.press('Control+Shift+ArrowLeft');await expect.poll(()=>page.locator('.editor-sheet .tiptap').evaluate(el=>{const e=(el as any).editor;return e.state.doc.textBetween(e.state.selection.from,e.state.selection.to)})).toBe('Verweis');await page.locator('[data-story-action="link"]').click();
   await expect(page.locator('.editor-sheet a')).toHaveText('Verweis');
   await page.locator('.editor-sheet a').click();await expect(page.locator('#storyTitle')).toHaveValue('Andere Mara');await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
   await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+z');await expect(page.locator('.editor-sheet a')).toHaveCount(0);

@@ -2,6 +2,8 @@
 
 Stand: 7. September 2026. Diese Datei beschreibt implementiertes Verhalten und seine Grenzen. Sie ist keine Zusicherung vollständiger Scrivener-Kompatibilität.
 
+Zusätzlich auf `testing`: **Testversion Schreibansicht & Zeitstrahl** (`0.1.0-alpha.6+testing.usability`) mit A4-Seiten im Editor, automatischen Ordnerübersichten, lesbaren Auswahllisten im Dunkelmodus, Ziehen und Randgriffen im Zeitstrahl sowie Enter-Bestätigung in Eingabefenstern. Bedienung und Grenzen stehen in [TESTVERSION-BEDIENUNG.md](TESTVERSION-BEDIENUNG.md). Die folgende Tabelle beschreibt weiterhin die veröffentlichte Alpha 6; deren Aussage über fehlende Editorseiten gilt nicht für die Testversion. Der PDF-Export verwendet auch in der Testversion sein eigenes Layout.
+
 Neu in Alpha 6: [Beziehungsnetz](BEZIEHUNGSNETZ.md) für Figuren, Orte und Gegenstände mit gerichteten/gegenseitigen Beziehungen, Notizen, verschiebbaren Karten, Suche und Nachbarschaftsansicht. Zentral im Projekt gespeichert, ohne Zeitverlauf oder automatische Ableitung aus Freitext.
 
 Neu in Alpha 5: [Szenen-Zeitstrahl](ZEITSTRAHL.md) mit Handlungsbahnen, Szenenzeiten und Kartenfiltern sowie [lokale deutsche Stilanalyse](STILANALYSE.md) mit Wiederholungen, Satzlängenübersicht und Füllwörtern/Floskeln. Kein Konto oder LanguageTool-Prozess erforderlich. Kategorien und optionale Automatik werden im Projekt gespeichert.
