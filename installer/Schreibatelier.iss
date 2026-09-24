@@ -25,6 +25,7 @@ Compression=lzma2
 SolidCompression=yes
 OutputDir=..\artifacts\releases\{#ReleaseVersion}
 OutputBaseFilename=Schreibatelier-{#ReleaseVersion}-Setup-win-x64
+SetupIconFile=..\src\Schreibatelier.App\Assets\Schreibatelier.ico
 UninstallDisplayIcon={app}\Schreibatelier.exe
 InfoBeforeFile=alpha-info.txt
 CloseApplications=no

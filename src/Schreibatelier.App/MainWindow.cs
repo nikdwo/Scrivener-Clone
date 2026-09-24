@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Win32;
@@ -56,14 +57,20 @@ public sealed class MainWindow : Window
         if (preferences["pandoc"] is JsonValue p) converter.Pandoc = p.GetValue<string>();
         if (preferences["typst"] is JsonValue t) converter.Typst = t.GetValue<string>();
         Title = AppTitle; Width = 1460; Height = 960; MinWidth = 760; MinHeight = 480;
+        Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/Schreibatelier.ico"));
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var layout = new DockPanel(); var menu = new Menu(); DockPanel.SetDock(menu, Dock.Top);
         foreach (var (title, entries) in new[] {
-            ("_Datei", new[] { ("_Neues Projekt", "new"), ("_Öffnen …", "open"), ("_Speichern", "save"), ("Kopie speichern …", "saveCopy"), ("_Importieren …", "import"), ("_Exportieren …", "export"), ("Sicherung erstellen", "backup"), ("Sicherung wiederherstellen …", "restoreBackup"), ("_Beenden", "close") }),
+            ("_Datei", new[] { ("_Neues Projekt", "new"), ("_Öffnen …", "open"), ("_Speichern", "save"), ("Kopie speichern …", "saveCopy"), ("_Importieren …", "import"), ("_Exportieren …", "export"), ("Sicherung erstellen", "backup"), ("Sicherung wiederherstellen …", "restoreBackup"), ("", ""), ("Einstellungen", "settings"), ("", ""), ("_Beenden", "close") }),
             ("_Ansicht", new[] { ("Schreiben", "write"), ("Pinnwand", "board"), ("Gliederung", "outline"), ("Zeitstrahl", "timeline"), ("Beziehungsnetz", "relationships"), ("Fokusmodus", "focus"), ("Farbschema wechseln", "theme") }),
-            ("_Hilfe", new[] { ("Kurzanleitung", "help"), ("Einstellungen", "settings"), ("Nach Updates suchen …", "updates"), ("Lizenzen", "licenses") }) })
+            ("_Hilfe", new[] { ("Kurzanleitung", "help"), ("Nach Updates suchen …", "updates"), ("Lizenzen", "licenses") }) })
         {
-            var group = new MenuItem { Header = title }; foreach (var (label, action) in entries) { var item = new MenuItem { Header = label }; item.Click += (_, _) => Send(new { type = "command", action }); group.Items.Add(item); }
+            var group = new MenuItem { Header = title };
+            foreach (var (label, action) in entries)
+            {
+                if (action.Length == 0) { group.Items.Add(new Separator()); continue; }
+                var item = new MenuItem { Header = label }; item.Click += (_, _) => Send(new { type = "command", action }); group.Items.Add(item);
+            }
             menu.Items.Add(group);
         }
         layout.Children.Add(menu); layout.Children.Add(web); Content = layout;

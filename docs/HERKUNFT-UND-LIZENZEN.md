@@ -8,6 +8,8 @@ Scrivener ist ein proprietäres Produkt. Seine Windows-EULA regelt insbesondere 
 
 Die Referenzrecherche betraf öffentlich dokumentierte Arbeitsweisen: Hierarchie längerer Texte, Metadaten, Karten, Gliederung, Textstände, Recherche und Ausgabe. Die ursprüngliche Projektmappe war leer. Anwendungscode, Editoranbindung, Datenformat, UI-Gestaltung, Wortlaut, Vorlagentexte und Testbilder wurden in diesem Projekt erstellt. Kein Screenshot, Logo, Icon, mitgelieferter Romantext oder Handbuchauszug des Referenzprodukts wurde als Anwendungsasset übernommen. „Schreibatelier“ ist ein Arbeitsname; eine Markenverfügbarkeitsprüfung dieses Namens wurde nicht durchgeführt.
 
+Das Programmsymbol verwendet das bereits in der Oberfläche eingesetzte „s.“-Monogramm und die Schreibatelier-Farben. Die Vektorfassung liegt unter `src/Schreibatelier.App/Assets/Schreibatelier.svg`; die Windows-ICO-Datei enthält Größen von 16 bis 256 Pixeln. Es wurde kein Symbol einer anderen Schreibanwendung übernommen.
+
 Gelesene Referenzen:
 
 - [Scrivener-Produktübersicht](https://www.literatureandlatte.com/scrivener/overview)

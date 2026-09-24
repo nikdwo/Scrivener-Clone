@@ -285,7 +285,7 @@ function renderInspector() {
 async function modal(title:string,body:string,button='Übernehmen'):Promise<FormData|null> {
   const dialog=$<HTMLDialogElement>('dialog');if(dialog.open)await new Promise<void>(resolve=>{dialog.addEventListener('close',()=>resolve(),{once:true});dialog.close('cancel')});$('dialogTitle').textContent=title;$('dialogBody').innerHTML=body;$('dialogSubmit').textContent=button;
   document.querySelector('.dialog-actions [value="cancel"]')!.classList.toggle('hidden',button==='Schließen');dialog.returnValue='cancel';dialog.showModal();
-  dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]),textarea:not([disabled]),select:not([disabled])')?.focus();
+  (dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]),textarea:not([disabled]),select:not([disabled])')??$('dialogSubmit')).focus();
   return new Promise(resolve=>dialog.addEventListener('close',()=>resolve(dialog.returnValue==='ok'?new FormData($<HTMLFormElement>('dialogForm')):null),{once:true}));
 }
 document.querySelectorAll<HTMLButtonElement>('#dialog [value="cancel"]').forEach(button=>{button.type='button';button.addEventListener('click',()=>$<HTMLDialogElement>('dialog').close('cancel'))});

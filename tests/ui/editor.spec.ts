@@ -655,6 +655,18 @@ test('item cards are available from templates and notebook and protect unsaved a
   await expect(page.locator('#storyField-origin')).toHaveValue('Vom König.');await expect(page.locator('#storyField-origin')).toBeDisabled();await expect(page.locator('[data-story-action="trash"]')).toBeDisabled();
 });
 
+test('context trash confirms sections and item cards with Enter',async({page})=>{
+  await page.locator('[data-doc="scene"]').click();await newStoryCard(page,'item','Silberschlüssel');
+  const item=await page.locator('[data-story-group="story-item"] [data-doc]').getAttribute('data-doc');
+  for(const id of ['scene2',item!]){
+    await page.locator(`#tree [data-doc="${id}"]`).click({button:'right'});await page.locator('#contextTrash').click();
+    await expect(page.locator('#dialogSubmit')).toBeFocused();await page.keyboard.press('Enter');
+    await expect(page.locator('#dialog')).toBeHidden();await expect(page.locator(`#tree [data-doc="${id}"]`)).toHaveCount(0);
+    expect(await page.evaluate(id=>(window as any).__test.docs.find((d:any)=>d.id===id).deleted,id)).toBe(true);
+  }
+  await expect(page.locator('#trashCount')).toHaveText('2');await expect(page.locator('#documentTitle')).toHaveValue('Das Haus am See');
+});
+
 test('context trash targets the clicked section and restores whole folders',async({page})=>{
   await page.locator('[data-doc="scene"]').click();
   await page.locator('.editor-sheet .tiptap').click();await page.keyboard.press('Control+End');await page.keyboard.type(' Ungespeicherter Zusatz.');
