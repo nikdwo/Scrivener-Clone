@@ -57,11 +57,13 @@ test('timeline uses manuscript order, durable AND filters and no deleted/researc
   assert.equal(timelineData(docs,config,{figure:card,place:'missing'}).count,0);
   assert.equal(JSON.stringify(docs),before);
 });
-test('timeline stacks overlaps including labels, supports missing strands and 1000 sparse scenes',()=>{
+test('timeline gives every scene a stable manuscript row, supports missing strands and 1000 sparse scenes',()=>{
   const docs=Array.from({length:1000},(_,i)=>scene('s'+i,i,{start:{day:i*10000},strandId:i%2?a:b}));
   const data=timelineData(docs,config);assert.equal(data.count,1000);assert.equal(data.lanes.length,3);
   const overlapping=timelineData([scene('a',0,{start:{day:1},end:{day:3},strandId:a}),scene('b',1,{start:{day:2},strandId:a}),scene('c',2,{start:{day:5},strandId:a})],config);
   const layout=layoutLane(overlapping.lanes[0].events,overlapping.low,overlapping.high,2400);
-  assert.deepEqual(layout.map(e=>e.row),[0,1,0]);assert.ok(layout[0].startWidth>0);
+  assert.deepEqual(layout.map(e=>e.row),[0,1,2]);assert.ok(layout[0].startWidth>0);
+  const moved=[...overlapping.lanes[0].events].reverse();moved[0]={...moved[0],low:0,high:1};
+  assert.deepEqual(layoutLane(moved,overlapping.low,overlapping.high,2400).map(e=>[e.scene.id,e.row]),[['a',0],['b',1],['c',2]]);
   assert.match(timelineData([scene('gone',0,{start:{day:1},strandId:card})],config).lanes.at(-1).name,/Nicht verfügbar/);
 });

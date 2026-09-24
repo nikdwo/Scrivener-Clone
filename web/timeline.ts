@@ -1,6 +1,6 @@
 import {escapeHtml as h} from './logic.mjs';
 import {isScene,isStoryCard,cardLabels} from './storycards.mjs';
-import {formatPoint,validateTimeline,timelineData,layoutLane,pointRange,minutePoint,editTimeline} from './timeline.mjs';
+import {formatPoint,validateTimeline,timelineData,layoutLane,pointRange,minutePoint,editTimeline,timelineScenes} from './timeline.mjs';
 
 type Options={project:()=>any;current:()=>any;selected:()=>string;visible:()=>boolean;changed:(d:any)=>void;
   flush:()=>Promise<void>;saveSettings:()=>Promise<void>;select:(id:string)=>Promise<void>;openText:(id:string)=>Promise<void>;
@@ -98,8 +98,8 @@ export class Timeline {
     const tickCount=Math.max(2,Math.min(7,Math.floor(width/150)+1));
     const ticks=Array.from({length:tickCount},(_,i)=>`<span style="left:${i*width/(tickCount-1)}px">${h(date(data.low+(data.high-data.low)*i/(tickCount-1)))}</span>`).join('');
     target.innerHTML=`<section id="timelineView"><div class="timeline-toolbar"><h2>Zeitstrahl</h2><span class="muted">${data.count} Szenen · ${config.basis==='relative'?'Relative Tage':'Kalenderdaten'}</span>${this.button('manage','Handlungsstränge','',this.busy)}${this.button('fit','Gesamtansicht')}${this.button('in','Vergrößern','',this.zoom>=64)}${this.button('out','Verkleinern','',this.zoom<=1)}</div><div class="timeline-filters">${filterHtml}</div><p class="muted">Alle Manuskriptszenen · Auswahl öffnet rechts die Details. Gestrichelte Grenzen sind tagesgenau; ihre Uhrzeit ist offen.</p><div id="timelineScroll" class="timeline-scroll" tabindex="0" role="region" aria-label="Zeitachse, horizontal scrollbar"><div class="timeline-axis" style="width:${width+410}px"><div class="timeline-ticks" style="width:${width}px">${ticks}</div></div>${data.lanes.map((lane:any)=>{
-      const events=layoutLane(lane.events,data.low,data.high,width),height=Math.max(70,...events.map((e:any)=>(e.row+1)*100+10));
-      return `<section class="timeline-lane" data-timeline-lane="${h(lane.id)}" aria-label="${h(lane.name)}" style="width:${width+410}px;min-height:${height}px"><h3>${h(lane.name)}</h3><div class="timeline-track">${events.map((event:any)=>`<div class="timeline-event ${event.end?'duration':'instant'}" data-timeline-event="${h(event.scene.id)}" style="left:${event.left}px;top:${event.row*100}px"><div class="timeline-span" data-timeline-drag="move" data-id="${h(event.scene.id)}" style="width:${event.span}px">${grip(event.scene.id,'start')}${grip(event.scene.id,'end')}${event.start.approximate?`<span class="timeline-uncertain start" style="width:${Math.min(event.span,event.startWidth)}px"></span>`:''}${event.end?.approximate?`<span class="timeline-uncertain end" style="width:${Math.min(event.span,event.endWidth)}px"></span>`:''}</div>${sceneButton(event.scene,label(event))}</div>`).join('')||'<p class="muted">Keine zeitlich eingeordnete Szene.</p>'}</div></section>`;
+      const events=layoutLane(lane.events,data.low,data.high,width);
+      return `<section class="timeline-lane" data-timeline-lane="${h(lane.id)}" aria-label="${h(lane.name)}" style="width:${width+410}px"><h3>${h(lane.name)}</h3><div class="timeline-track">${events.map((event:any)=>`<div class="timeline-row" data-timeline-row="${h(event.scene.id)}" data-order="${event.order}"><div class="timeline-event ${event.end?'duration':'instant'}" data-timeline-event="${h(event.scene.id)}" style="left:${event.left}px;top:0"><div class="timeline-span" data-timeline-drag="move" data-id="${h(event.scene.id)}" style="width:${event.span}px">${grip(event.scene.id,'start')}${grip(event.scene.id,'end')}${event.start.approximate?`<span class="timeline-uncertain start" style="width:${Math.min(event.span,event.startWidth)}px"></span>`:''}${event.end?.approximate?`<span class="timeline-uncertain end" style="width:${Math.min(event.span,event.endWidth)}px"></span>`:''}</div>${sceneButton(event.scene,label(event))}</div></div>`).join('')||'<p class="muted timeline-empty">Keine zeitlich eingeordnete Szene.</p>'}</div></section>`;
     }).join('')}</div><h3>Noch nicht zeitlich eingeordnet</h3><div class="timeline-unplanned">${data.unplanned.map((d:any)=>sceneButton(d,'Ohne Beginn')).join('')||'<p class="muted">Keine ungeplanten Szenen für diese Filter.</p>'}</div></section>`;
     this.wire(target);this.wireDragging(target);for(const el of target.querySelectorAll<HTMLSelectElement>('[data-timeline-filter]'))el.addEventListener('change',()=>{this.cancelDrag();this.extent=null;this.filters[el.dataset.timelineFilter!]=el.value;this.scroll=0;this.render(false);(document.getElementById(el.id) as HTMLElement)?.focus({preventScroll:true})});
     document.getElementById('timelineScroll')!.scrollLeft=this.scroll;target.scrollTop=this.top;
@@ -107,7 +107,7 @@ export class Timeline {
   }
   cancelDrag(){
     cancelAnimationFrame(this.scrollFrame);this.scrollFrame=0;
-    const g=this.gesture;if(!g)return;this.gesture=null;g.preview?.remove();g.tip?.remove();
+    const g=this.gesture;if(!g)return;this.gesture=null;g.preview?.remove();g.tip?.remove();g.placeholder?.remove();
     document.querySelectorAll('.timeline-drop-lane').forEach(el=>el.classList.remove('timeline-drop-lane'));
     if(g.started){this.suppressClick=true;setTimeout(()=>this.suppressClick=false,0)}
   }
@@ -119,7 +119,7 @@ export class Timeline {
     const point=value.start?pointRange(value[mode==='end'?'end':'start']??value.start,p.settings.timeline.basis):null,baseMinute=point?(mode==='end'?point.high:point.low):this.geometry.low;
     const anchor=this.minuteAt(x);
     this.gesture={p,id,value,mode,handle,x,y,originX:x,originY:y,anchor,lastX:x,lastMinute:anchor,delta:0,baseMinute,minute:baseMinute,
-      strand:value.strandId??'none',keyboard,started:keyboard,next:null};
+      strand:value.strandId??'none',order:timelineScenes(p.documents).findIndex((d:any)=>d.id===id),keyboard,started:keyboard,next:null};
     if(keyboard)this.previewDrag();return true;
   }
   private minuteAt(x:number){
@@ -136,8 +136,19 @@ export class Timeline {
       if(!lane)throw new Error('Zum Einordnen auf eine Handlungsbahn ziehen.');
       if(g.strand!=='none'&&!g.p.settings.timeline.strands.some((s:any)=>s.id===g.strand)&&g.strand!==g.value.strandId)throw new Error('Dieser Handlungsstrang ist nicht verfügbar.');
       document.querySelectorAll('.timeline-drop-lane').forEach(el=>el.classList.remove('timeline-drop-lane'));lane.classList.add('timeline-drop-lane');
-      const track=lane.querySelector<HTMLElement>('.timeline-track')!.getBoundingClientRect(),scale=this.geometry.width/(this.geometry.high-this.geometry.low);
-      g.preview.style.cssText=`position:fixed;left:${track.left+(start.low-this.geometry.low)*scale}px;top:${lane.getBoundingClientRect().top+36}px;width:${Math.max(4,((end?.high??start.high)-start.low)*scale)}px`;
+      const track=lane.querySelector<HTMLElement>('.timeline-track')!,scale=this.geometry.width/(this.geometry.high-this.geometry.low);
+      let row=track.querySelector<HTMLElement>(`[data-timeline-row="${CSS.escape(g.id)}"]`);
+      if(row){g.placeholder?.remove();g.placeholder=null}
+      else{
+        if(g.placeholder?.parentElement!==track){
+          g.placeholder?.remove();g.placeholder=document.createElement('div');g.placeholder.className='timeline-row timeline-drag-row';
+          const following=[...track.querySelectorAll<HTMLElement>('[data-timeline-row]')].find(el=>Number(el.dataset.order)>g.order);
+          track.insertBefore(g.placeholder,following??null);
+        }
+        row=g.placeholder;
+      }
+      row!.append(g.preview);
+      g.preview.style.cssText=`position:absolute;left:${(start.low-this.geometry.low)*scale}px;top:0;width:${Math.max(4,((end?.high??start.high)-start.low)*scale)}px`;
       const position=formatPoint(minutePoint(g.keyboard||g.fine?g.mode==='end'?end.high:start.low:g.cursorMinute??g.minute,basis),basis);
       g.tip.textContent=`Position: ${position}\nBeginn: ${formatPoint(g.next.start,basis)}${g.next.end?'\nEnde: '+formatPoint(g.next.end,basis):''}\n${lane.getAttribute('aria-label')} · Escape bricht ab${g.keyboard?' · Pfeiltasten ändern, Enter übernimmt':g.fine?' · Feinziehen: 1 Pixel = 1 Minute':' · Umschalt: minutengenau feinziehen'}`;
       g.tip.classList.remove('error');

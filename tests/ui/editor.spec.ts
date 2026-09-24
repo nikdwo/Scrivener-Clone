@@ -102,6 +102,27 @@ test('timeline minute dragging covers daily boundaries, mixed spans, new placeme
   await expect(page.locator('[data-timeline-scene="third"]')).toContainText('10:04');await expect(page.locator('[data-timeline-scene="third"]')).toContainText('23:52');
 });
 
+test('timeline rows separate every scene and keep drag previews beside their own scene',async({page})=>{
+  await timelineFixture(page);
+  const rows=page.locator('[data-timeline-row]'),row=page.locator('[data-timeline-row="scene2"]'),button=row.locator('[data-timeline-scene]'),preview=page.locator('.timeline-drag-preview');
+  await expect(rows).toHaveCount(3);await expect(row).toHaveCSS('border-bottom-width','1px');await expect(row).toHaveCSS('border-bottom-style','solid');
+  const order=await rows.evaluateAll(nodes=>nodes.map(el=>(el as HTMLElement).dataset.timelineRow));
+  await button.scrollIntoViewIfNeeded();const top=(await row.boundingBox())!.y;expect(top).toBeGreaterThan((await page.locator('[data-timeline-row="scene"]').boundingBox())!.y);
+  for(const handle of [button,row.locator('[data-timeline-drag="start"]'),row.locator('[data-timeline-drag="end"]')]){
+    await handle.focus();await handle.press('Space');await expect(row.locator('.timeline-drag-preview')).toBeVisible();expect(Math.abs((await preview.boundingBox())!.y-(await row.boundingBox())!.y)).toBeLessThan(1);
+    await page.keyboard.press('Escape');await expect(preview).toHaveCount(0);
+  }
+  await button.scrollIntoViewIfNeeded();const rect=(await button.boundingBox())!,x=rect.x+40,y=rect.y+20;
+  await page.keyboard.down('Shift');await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+1,y);await expect(row.locator('.timeline-drag-preview')).toBeVisible();
+  expect(Math.abs((await preview.boundingBox())!.y-(await row.boundingBox())!.y)).toBeLessThan(1);await page.screenshot({path:'artifacts/timeline-rows-light.png'});
+  await page.mouse.up();await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene2').meta.timeline.start.time)).toBe('00:01');
+  expect(await rows.evaluateAll(nodes=>nodes.map(el=>(el as HTMLElement).dataset.timelineRow))).toEqual(order);
+  await page.locator('[data-action="theme"]').click();await button.focus();await button.press('Space');await page.keyboard.press('ArrowDown');
+  const destination=page.locator(`[data-timeline-lane="${'b'.repeat(32)}"]`);await expect(destination.locator('.timeline-drag-row .timeline-drag-preview')).toBeVisible();
+  await expect(destination.locator('.timeline-row').first()).toHaveClass(/timeline-drag-row/);await page.screenshot({path:'artifacts/timeline-rows-dark.png'});
+  await page.keyboard.press('Enter');await expect(destination.locator('[data-timeline-row]')).toHaveCount(2);await expect(destination.locator('[data-timeline-row]').first()).toHaveAttribute('data-timeline-row','scene2');await expect(page.locator('.timeline-drag-row')).toHaveCount(0);
+});
+
 test.beforeEach(async({page})=>{
   await page.addInitScript(()=>{
     const body=(text:string)=>JSON.stringify({type:'doc',content:[{type:'paragraph',content:text?[{type:'text',text}]:[]}]});
@@ -193,7 +214,7 @@ test('timeline setup, strand management, metadata and persistence use existing p
 });
 test('timeline filters, navigation, zoom and theme preserve manuscript order and text',async({page})=>{
   await timelineFixture(page);const before=await page.evaluate(()=>JSON.stringify((window as any).__test.docs));
-  await expect(page.locator('[data-timeline-scene]')).toHaveCount(3);await expect(page.locator('.timeline-lane').first().locator('[data-timeline-scene]').first()).toHaveAttribute('data-timeline-scene','scene2');
+  await expect(page.locator('[data-timeline-scene]')).toHaveCount(3);await expect(page.locator('.timeline-lane').first().locator('[data-timeline-scene]').first()).toHaveAttribute('data-timeline-scene','scene');
   await page.locator('#timelineFilter-figure').selectOption('c'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(2);
   await page.locator('#timelineFilter-strand').selectOption('a'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(1);
   await page.locator('[data-timeline-scene="scene"]').focus();await page.keyboard.press('Enter');await expect(page.locator('#timelineStartDay')).toHaveValue('2');
@@ -227,7 +248,7 @@ test('timeline handles calendar precision, settings failure and project switches
 });
 test('timeline renders 1000 sparse scenes without one element per empty day',async({page})=>{
   await timelineFixture(page,1000);await expect(page.locator('[data-timeline-scene]')).toHaveCount(1000);expect(await page.locator('.timeline-ticks span').count()).toBeLessThanOrEqual(7);
-  expect(await page.locator('#timelineView *').count()).toBeLessThan(9000);await page.locator('#timelineFilter-strand').selectOption('b'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(499);
+  expect(await page.locator('#timelineView *').count()).toBeLessThan(10000);await expect(page.locator('[data-timeline-row]')).toHaveCount(1000);await page.locator('#timelineFilter-strand').selectOption('b'.repeat(32));await expect(page.locator('[data-timeline-scene]')).toHaveCount(499);
 });
 test('timeline settings preserve concurrent scene edits and allow deleting an unused strand',async({page})=>{
   await timelineFixture(page);await page.locator('[data-timeline-scene="scene"]').click();

@@ -59,14 +59,18 @@ async function run(restart){
       const dailyButton=page.locator(`[data-timeline-scene="${daily.id}"]`);await dailyButton.focus();await dailyButton.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
       await expect.poll(async()=>(await bridge(page,'document',{id:daily.id})).meta.timeline.start.time).toBe('00:01');
       await dailyButton.scrollIntoViewIfNeeded();const dailyRect=await dailyButton.boundingBox(),dx=dailyRect.x+dailyRect.width/2,dy=dailyRect.y+dailyRect.height/2;
-      await page.keyboard.down('Shift');await page.mouse.move(dx,dy);await page.mouse.down();await page.mouse.move(dx+1,dy);await expect(page.locator('.timeline-drag-tip')).toContainText('1 Pixel = 1 Minute');await page.mouse.up();await page.keyboard.up('Shift');
+      await page.keyboard.down('Shift');await page.mouse.move(dx,dy);await page.mouse.down();await page.mouse.move(dx+1,dy);await expect(page.locator('.timeline-drag-tip')).toContainText('1 Pixel = 1 Minute');
+      const dailyRow=page.locator(`[data-timeline-row="${daily.id}"]`),dailyPreview=dailyRow.locator('.timeline-drag-preview');await expect(dailyPreview).toBeVisible();await expect(dailyRow).toHaveCSS('border-bottom-style','solid');
+      const lineWidth=await dailyRow.evaluate(el=>parseFloat(getComputedStyle(el).borderBottomWidth));expect(lineWidth).toBeGreaterThan(0);expect(lineWidth).toBeLessThanOrEqual(1);
+      expect(Math.abs((await dailyPreview.boundingBox()).y-(await dailyRow.boundingBox()).y)).toBeLessThan(1);await page.screenshot({path:path.join(root,'artifacts','timeline-rows-native.png')});
+      await page.mouse.up();await page.keyboard.up('Shift');
       const dailyTimeline={start:{day:1,time:'00:02'},end:{day:3,time:'00:01'},strandId:strands[1].id};
       await expect.poll(async()=>(await bridge(page,'document',{id:daily.id})).meta.timeline).toEqual(dailyTimeline);
       await page.locator('#timelineFilter-figure').selectOption(figure.id);await expect(page.locator('[data-timeline-scene]')).toHaveCount(1);await bridge(page,'integrationCapture',{phase:'timeline'});
       const final=await bridge(page,'document',{id:scene.id});expect(final.body).toBe(body);expect(final.meta.timeline).toEqual({start:{day:1,time:'09:01'},end:{day:1,time:'12:02'},strandId:strands[1].id});
       p=await bridge(page,'state');expect(p.documents.map(d=>[d.id,d.parentId,d.position])).toEqual(before.documents.map(d=>[d.id,d.parentId,d.position]));
       saved={scene:scene.id,folder:folder.id,body,timeline:final.meta.timeline,daily:daily.id,dailyTimeline,order:p.documents.map(d=>[d.id,d.parentId,d.position])};
-      checks.push('Ordner, Text und Figur per echter Enter-Eingabe angelegt; Escape verwirft','A4-Seiten mit echtem WebView2-Editor, Ordnertext und dunkle Auswahlliste','Zeitstrahl: Verschieben, Randgriff, Bahnwechsel, Mausvorschau und Escape','Tagesgenaue Szene minutengenau verschoben: Tastatur und Umschalt-Mausbewegung; Dauer erhalten','SQLite speichert neue Zeiten bei unverändertem Text und unveränderter Reihenfolge');
+      checks.push('Ordner, Text und Figur per echter Enter-Eingabe angelegt; Escape verwirft','A4-Seiten mit echtem WebView2-Editor, Ordnertext und dunkle Auswahlliste','Zeitstrahl: Verschieben, Randgriff, Bahnwechsel, Mausvorschau und Escape','Tagesgenaue Szene minutengenau verschoben: Tastatur und Umschalt-Mausbewegung; Dauer erhalten','Jede Szene hat eine eigene Zeile mit Trennlinie; Ziehvorschau bleibt in der zweiten Szenenzeile','SQLite speichert neue Zeiten bei unverändertem Text und unveränderter Reihenfolge');
     }else{
       const d=await bridge(page,'document',{id:saved.scene});expect(d.body).toBe(saved.body);expect(d.meta.timeline).toEqual(saved.timeline);expect(p.documents.map(d=>[d.id,d.parentId,d.position])).toEqual(saved.order);
       expect((await bridge(page,'document',{id:saved.daily})).meta.timeline).toEqual(saved.dailyTimeline);checks.push('Minutengenaue Zeiten der zuvor tagesgenauen Szene nach Programmneustart erhalten');

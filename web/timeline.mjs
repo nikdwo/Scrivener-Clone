@@ -81,11 +81,9 @@ export function timelineData(documents,config,filters={}) {
   return {lanes:lanes.filter(l=>!filters.strand||l.id===filters.strand),unplanned,low,high,count:scenes.length};
 }
 export function layoutLane(events,low,high,width) {
-  const rows=[],scale=width/Math.max(1,high-low);
-  // ponytail: scan occupied subrows; replace with a heap if thousands of simultaneous scenes become a measured bottleneck.
-  return events.map(event=>{
-    const left=(event.low-low)*scale,span=Math.max(2,(event.high-event.low)*scale),occupied=Math.max(220,span)+12;
-    let row=rows.findIndex(right=>right<=left);if(row<0)row=rows.length;rows[row]=left+occupied;
+  const scale=width/Math.max(1,high-low);
+  return [...events].sort((a,b)=>a.order-b.order).map((event,row)=>{
+    const left=(event.low-low)*scale,span=Math.max(2,(event.high-event.low)*scale);
     return {...event,left,span,row,startWidth:event.start.approximate?Math.max(2,1439*scale):0,endWidth:event.end?.approximate?Math.max(2,1439*scale):0};
   });
 }

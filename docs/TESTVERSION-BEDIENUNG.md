@@ -16,6 +16,8 @@ Im Projektordner **Testversion Schreibansicht & Zeitstrahl.lnk** oder **Schreiba
 
 ## Genauigkeit und Tastatur im Zeitstrahl
 
+Jede Szene hat innerhalb ihres Handlungsstrangs eine eigene Zeile mit dünner Trennlinie. Die Zeilen folgen der Manuskriptreihenfolge, damit eine Zeitänderung die Szene nicht in eine andere Zeile verschiebt. Der Vorschau-Balken bleibt beim Ziehen und beim Ändern der Ränder in dieser Zeile. Beim Wechsel der Handlungsbahn erscheint dort eine eigene Vorschauzeile an der späteren Einfügeposition.
+
 Alle Szenen und beide Randgriffe lassen sich minutengenau ziehen. **Umschalt beim Ziehen** ermöglicht Feinarbeit: Ein Mauspixel entspricht einer Minute, unabhängig vom Zoom. Ohne Umschalt folgt das Ziehen dem angezeigten Zeitmaßstab.
 
 Bisher tagesgenaue Angaben bekommen beim Ziehen genaue Uhrzeiten. Ausgangspunkt sind die sichtbaren Grenzen: 00:00 für den Beginn und 23:59 für das Ende. Die Vorschau zeigt die neuen Zeiten; erst Loslassen übernimmt sie. Unberührte Szenen behalten ihre bisherigen Angaben.
