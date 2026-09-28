@@ -1,5 +1,28 @@
 # Validierung – Alpha 6 (0.1.0-alpha.6)
 
+## Restbefunde der zweiten Review, 28. September 2026
+
+F2, F13, F11 und F8 sind ausgehend von `acf0552` auf `codex/codereview-fix` korrigiert. Projektformat, SQLite-Schema und native RPC-Verträge bleiben unverändert; keine neue Bibliothek.
+
+- **F2:** Eine projektbezogene Aktion wird vor ihrem ersten asynchronen Schritt registriert. Projektwechsel, Schließen und Installerstart werden bis zu ihrem vollständigen Abschluss zurückgewiesen; Eingaben bleiben erhalten und der Wechsel muss erneut angefordert werden. Reines Speichern und Autosave verwenden weiterhin die Speicherbarriere. Direkte Moduleinstiege und Dialog-Folgeaktionen sind eingeschlossen. Eine Projektsitzungsnummer schützt verzögerte Antworten und Such-Timer; normale Aktualisierungen ändern sie nicht. Späte Dokumentantworten überschreiben keine neueren oder inzwischen bearbeiteten Cacheeinträge.
+- **F13:** Doppelte JSON-Schlüssel führen beim Laden zu Standards. Nicht dekodierbare bekannte Einstellungswerte werden einzeln verworfen, gültige und unbekannte Felder bleiben erhalten. Die Originaldatei bleibt unangetastet; abgelehntes Speichern verändert weder Datei noch aktive Einstellungen oder Konverterpfade.
+- **F11:** Doppelte Eigenschaften in Codex-Antworten werden als Protokollfehler gemeldet. Reader-, Prozess- und Verbindungsfreigabe werden auch bei fehlgeschlagenen Reader-Aufgaben abgeschlossen. Die nächste Benutzeraktion kann wieder verbinden; Manuskripttext wird nicht automatisch erneut übertragen.
+- **F8:** Jeder externe Konverter startet atomar in einer eigenen Windows-Jobgruppe mit begrenzter Handle-Vererbung. Bei Timeout oder Kommunikationsfehler wird die gesamte Gruppe beendet und deren Ende bestätigt, auch wenn der direkte Prozess bereits beendet war. Argumentübergabe und bisherige Ein-/Ausgabekodierung bleiben erhalten. Externe Konverter benötigen Windows 10 oder neuer.
+
+Abnahme des endgültigen Programmstands:
+
+- **252 Core-Prüfungen bestanden**, einschließlich 24 Prozessprüfungen, aller Import-/Exportrundläufe und der vorhandenen Datenintegritätsfälle: `artifacts/rest-core-checks.log`.
+- **64 Sprachprüfungen bestanden**, einschließlich Fake-Codex-Neustart, echter fehlgeschlagener Reader-Aufgabe, alter Anfragen, paralleler Statusaufrufe, synthetischer Premium-Fälle und echter lokaler LanguageTool-Prüfung: `artifacts/rest-proof-checks.log`.
+- **23 Updateprüfungen und 28 JavaScript-Prüfungen bestanden:** `artifacts/rest-update-checks.log`, `artifacts/rest-web-checks.log`.
+- **87 Edge-Oberflächentests bestanden**, ohne Fehler, ausgelassene Fälle oder Wiederholungen. Die 17 zusätzlichen Fälle erfassen die neuen Aktions- und Lade-Rennen. Frühere Stilanalyse-/Zeitstrahltests sind auf die ausdrücklich festgelegte Rückweisung während laufender projektbezogener Aktionen angepasst: `artifacts/rest-ui-final.json`, `artifacts/rest-ui-final.log`.
+- **Elf native WPF/WebView2-Durchläufe bestanden:** neun Starts mit ungültigen Einstellungen, fehlgeschlagener Storewechsel mit anschließender Bearbeitung und atomarer Einstellungsspeicherung sowie vollständiger Neustart. Originaldateien, gespeicherte Texte, unbekannte Felder und Konverterpfade wurden geprüft. Isolierte Daten unter `.work/review-native/1a9c3fc7-3c10-490c-9027-1727bf685b9b`; Ergebnisse: `artifacts/rest-native-result.json`, `artifacts/rest-native-checks.log`.
+- TypeScript-Prüfung, aktueller Web-Build und .NET-Release-Publish bestanden. Der nativ geprüfte Build liegt unter `artifacts/rest-review/app`; sein Webbundle stimmt per SHA-256 mit dem vollständig geprüften Bundle überein (`C985273237954F234843F3108EBA32957B360017E8DBFC415241DF833A77CB85`). Buildprotokolle: `artifacts/rest-core-build.log`, `artifacts/rest-proof-build.log`, `artifacts/rest-app-build.log`.
+- Die abschließende Windows-Prozessabfrage fand keine zugeordneten Testprozesse oder Testserver: `artifacts/rest-processes.json`.
+
+Für alle vier Restbefunde wurde der Ausgangsfehler vor der Produktionsänderung belegt. Der vollständige Core-Lauf zeigte zusätzlich eine bisher implizite Kodierungsannahme im Echo-Test: Alte und neue Prozessausführung lieferten im gleichen Konsolenkontext dieselben Bytes. Der Test legt seine Ein-/Ausgabekodierung nun ausdrücklich fest und vergleicht weiterhin die tatsächlichen Bytes mit dem bisherigen `Process.Start`-Verhalten (`artifacts/f8-encoding-diagnostic.log`). Sandboxierte Browserläufe waren langsam und blieben beim Prozessabbau hängen; die vollständige erfolgreiche Abnahme lief im normalen Windows-Benutzerkontext.
+
+Die frühere native Windows-Ausführungssperre trat bei diesem Build nicht auf. Sicherheitsrichtlinien wurden nicht verändert. Echte Premium-/Codex-Konten, Installer und Veröffentlichung wurden nicht live geprüft oder ausgeführt.
+
 ## Review-Korrekturen, 28. September 2026
 
 Implementiert auf `codex/codereview-fix`, ausgehend von `5b9538b`. F1–F17 sind umgesetzt; Projektformat und SQLite-Schemaversion bleiben unverändert. Keine Veröffentlichung und kein Installerstart.

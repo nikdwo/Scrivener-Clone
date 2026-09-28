@@ -14,7 +14,7 @@ internal static class ProofRegressionChecks
     internal static async Task Run(string directory, Action<bool, string> check)
     {
         var work = Path.Combine(directory, "regressions-" + Model.Id()); Directory.CreateDirectory(work);
-        foreach (var failure in new[] { "eof", "invalid", "shape", "turn" })
+        foreach (var failure in new[] { "faulted", "duplicate", "eof", "invalid", "shape", "turn" })
         {
             var starts = 0; var paths = new List<string>();
             using var codex = new CodexProofreader(Path.Combine(work, failure), () =>
@@ -25,12 +25,34 @@ internal static class ProofRegressionChecks
                 foreach (var argument in new[] { "--fake-codex", starts == 1 ? failure : "healthy", path }) start.ArgumentList.Add(argument);
                 return start;
             });
-            var elapsed = Stopwatch.StartNew();
-            var error = await Fails<IOException>(failure == "turn" ? codex.Check([new(0, "Synthetic manuscript sentence.")], "de-DE", "synthetic-model", false, CancellationToken.None) : codex.Status());
-            check(error.InnerException is not null, "Codex " + failure + " retains the reader failure cause");
-            check(elapsed.Elapsed < TimeSpan.FromSeconds(10), "Codex " + failure + " fails pending request without the 60-second timeout");
+            var connectionField = typeof(CodexProofreader).GetField("connection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            object? oldOwner;
+            if (failure == "faulted")
+            {
+                await codex.Status().WaitAsync(TimeSpan.FromSeconds(10));
+                oldOwner = connectionField.GetValue(codex)!;
+                var readerField = oldOwner.GetType().GetField("Reader")!;
+                var reader = (Task)readerField.GetValue(oldOwner)!;
+                var unexpected = new ApplicationException("Synthetic unexpected reader failure.");
+                readerField.SetValue(oldOwner, Task.FromException(unexpected));
+                var error = await Fails<ApplicationException>(codex.Status());
+                check(ReferenceEquals(error, unexpected), "Unexpected Codex reader failure remains observable");
+                check(connectionField.GetValue(codex) is null, "Faulted Codex reader releases its connection even when its error propagates");
+                await reader.WaitAsync(TimeSpan.FromSeconds(10));
+                var process = (Process)oldOwner.GetType().GetField("Process")!.GetValue(oldOwner)!;
+                try { _ = process.Handle; throw new Exception("Faulted reader process was not disposed."); }
+                catch (InvalidOperationException) { check(true, "Faulted Codex reader disposes its process before the next action"); }
+            }
+            else
+            {
+                var elapsed = Stopwatch.StartNew();
+                var error = await Fails<IOException>(failure == "turn" ? codex.Check([new(0, "Synthetic manuscript sentence.")], "de-DE", "synthetic-model", false, CancellationToken.None) : codex.Status());
+                check(error.InnerException is not null, "Codex " + failure + " retains the reader failure cause");
+                if (failure == "duplicate") check(error.InnerException is JsonException, "Duplicate Codex properties report the JSON failure rather than an unrelated EOF");
+                check(elapsed.Elapsed < TimeSpan.FromSeconds(10), "Codex " + failure + " fails pending request without the 60-second timeout");
+                oldOwner = connectionField.GetValue(codex);
+            }
             check(starts == 1, "Codex " + failure + " never retries an interrupted action automatically");
-            var oldOwner = typeof(CodexProofreader).GetField("connection", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(codex);
             var status = JsonSerializer.SerializeToNode(await codex.Status().WaitAsync(TimeSpan.FromSeconds(10)), Model.Json)!;
             check(starts == 2 && status["connected"]!.GetValue<bool>(), "Codex " + failure + " restarts on the next user action");
             var oldPid = int.Parse(await File.ReadAllTextAsync(paths[0] + ".pid"));
@@ -104,9 +126,10 @@ internal static class ProofRegressionChecks
             var request = JsonNode.Parse(line)!.AsObject(); var method = request["method"]!.GetValue<string>();
             await File.AppendAllTextAsync(path + ".log", method + "\n");
             if (request["id"] is not { } id) continue;
-            if (method == "account/read" && mode is "eof" or "invalid" or "shape")
+            if (method == "account/read" && mode is "eof" or "invalid" or "shape" or "duplicate")
             {
                 if (mode == "shape") { await Console.Out.WriteLineAsync(JsonSerializer.Serialize(new { id = id.GetValue<int>(), result = Array.Empty<string>() })); await Console.Out.FlushAsync(); }
+                else if (mode == "duplicate") { await Console.Out.WriteLineAsync("{\"id\":" + id + ",\"id\":" + id + ",\"result\":{\"account\":null}}"); await Console.Out.FlushAsync(); }
                 else if (mode == "invalid") { await Console.Out.WriteLineAsync("invalid-json"); await Console.Out.FlushAsync(); }
                 else { await Console.Out.FlushAsync(); CloseHandle(GetStdHandle(-11)); }
                 await Task.Delay(Timeout.Infinite); // Remain alive: the client's failed reader must stop this process.

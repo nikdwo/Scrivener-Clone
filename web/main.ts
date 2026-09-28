@@ -40,21 +40,21 @@ let editors: Editor[] = [], reference: Editor | null = null, preferences: any = 
 let storageDirectory = "Windows-Benutzerprofil / AppData / Local / Schreibatelier";
 let combined = false, combinedLimit = 30, referenceId: string | null = null, saveTimer: any, searchTimer: any, saving: Promise<void> | null = null, serial = 0, sessionStart = 0;
 let selectionRequest = 0, renderRequest = 0, referenceRequest = 0;
-let transitioning = false, preferenceSave: Promise<void> = Promise.resolve();
+let transitioning = false, activeProjectActions = 0, projectGeneration = 0, preferenceSave: Promise<void> = Promise.resolve();
 let folderText: string | null = null;
 let confirmedSettings:any={},confirmedTitle="";
 const cache = new Map<string,any>(), dirty = new Map<string,number>(), collapsed = new Set<string>();
 const emptyBody = JSON.stringify({type:'doc',content:[{type:'paragraph'}]});
 const pagination=new Pagination($('editorPane'));
-const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,saveSettings:saveProjectSettings,modal});
+const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,saveSettings:saveProjectSettings,modal,runAction:runProjectAction});
 const updates=new Updates(rpc,transition,enabled=>savePreferences({checkUpdatesAtStartup:enabled}));
-const storyCards=new StoryCards({rpc,project:()=>project,scene:current,editor:()=>active,getDoc,changed,flush,refresh,modal,select:async id=>{await relationships.beforeLeave();if(view==='relationships')view='write';await select(id)},trash:trashDocument,saveSettings:saveProjectSettings,
+const storyCards=new StoryCards({rpc,project:()=>project,scene:current,editor:()=>active,getDoc,changed,flush,refresh,modal,runAction:runProjectAction,select:async id=>{await relationships.beforeLeave();if(view==='relationships')view='write';await select(id)},trash:trashDocument,saveSettings:saveProjectSettings,
   beforeLeave:()=>relationships.beforeLeave(),mountRelationships:(target,id)=>relationships.mount(target,id),
   show:()=>{inspector='cards';document.body.classList.add('inspector-visible');renderInspector()},error:message=>toast(message,true)});
-const timeline=new Timeline({project:()=>project,current,selected:()=>selected,visible:()=>view==='timeline',changed,flush,saveSettings:saveProjectSettings,modal,getDoc,
+const timeline=new Timeline({project:()=>project,generation:()=>projectGeneration,current,selected:()=>selected,visible:()=>view==='timeline',changed,flush,saveSettings:saveProjectSettings,modal,getDoc,runAction:runProjectAction,
   select:async id=>{await flush();inspector='details';document.body.classList.add('inspector-visible');await select(id);document.querySelector('.timeline-details')?.scrollIntoView({block:'start'})},
   openText:async id=>{await flush();view='write';await select(id)},inspector:renderInspector,error:message=>toast(message,true)});
-const relationships=new Relationships({project:()=>project,visible:()=>view==='relationships',openCard:id=>storyCards.open(id),
+const relationships=new Relationships({project:()=>project,visible:()=>view==='relationships',openCard:id=>storyCards.open(id),runAction:runProjectAction,
   show:()=>{inspector='cards';document.body.classList.add('inspector-visible');renderInspector()},
   save:network=>saveProjectSettings({relationshipNetwork:network}),modal,error:message=>toast(message,true)});
 
@@ -151,9 +151,16 @@ async function flush():Promise<void> {
   })().finally(()=>{saving=null});
   return saving;
 }
+async function runProjectAction<T>(work:()=>T|Promise<T>):Promise<T> {
+  if(transitioning)throw new Error('Bitte warten, bis der Projektwechsel abgeschlossen ist.');
+  ++activeProjectActions;
+  try{return await work()}finally{--activeProjectActions}
+}
+function projectEvent(work:()=>any) {void runProjectAction(work).catch(e=>toast(e.message,true))}
 async function transition(work:()=>Promise<any>,terminal=false):Promise<void> {
   if(transitioning)throw new Error('Ein Projektwechsel läuft bereits.');
   if($<HTMLDialogElement>('dialog').open)throw new Error('Bitte den geöffneten Dialog zuerst abschließen oder abbrechen.');
+  if(activeProjectActions)throw new Error('Bitte die laufende Aktion abschließen, bevor du das Projekt wechselst.');
   transitioning=true;const focus=document.activeElement as HTMLElement|null,workspace=$('workspace'),wasInert=workspace.inert;
   workspace.inert=true;workspace.setAttribute('aria-busy','true');
   let completed=false;
@@ -163,13 +170,23 @@ async function transition(work:()=>Promise<any>,terminal=false):Promise<void> {
   }
 }
 setInterval(()=>{ if(dirty.size) void flush().catch(()=>{}); },5000);
-async function getDoc(id:string) { if(!cache.has(id)) { const owner=project; const d=await rpc('document',{id});if(owner!==project)throw new Error('Das Projekt hat sich während des Ladens geändert.');cache.set(id,d); } return cache.get(id); }
+async function getDoc(id:string) {
+  if(!cache.has(id)){
+    const owner=projectGeneration,d=await rpc('document',{id});
+    if(owner!==projectGeneration)throw new Error('Das Projekt hat sich während des Ladens geändert.');
+    if(!cache.has(id)){
+      if(d.revision<(info(id)?.revision??d.revision))return getDoc(id);
+      cache.set(id,d);
+    }
+  }
+  return cache.get(id);
+}
 async function refresh(next?:any) { await flush(); project=next ?? await rpc('state');confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; for(const d of project.documents) { const cached=cache.get(d.id); if(cached && cached.revision!==d.revision) cache.delete(d.id); } renderTree(); renderCollections(); updateStats(); storyCards.invalidate(); proofreading.cardsChanged(); timeline.update(); relationships.update(); }
 function renderRecentProjects(entries:{title:string,filePath:string}[]=[]) {
   $('recentProjects').innerHTML=entries.slice(0,3).map(p=>`<li><button type="button" data-recent-project="${h(p.filePath)}" title="${h(p.filePath)}"><span>${h(p.title||p.filePath.split(/[\\/]/).pop())}</span><small>${h(p.filePath)}</small></button></li>`).join('');
   $('recentProjectsEmpty').classList.toggle('hidden',entries.length>0);
 }
-async function adopt(next:any) { if(!next) return;++selectionRequest;++renderRequest;++referenceRequest;referenceId=null;reference?.destroy();reference=null;$('referencePane').replaceChildren();$('referencePane').classList.add('hidden');folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); relationships.reset(); if(view==='timeline'||view==='relationships')view='write'; project=next;confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
+async function adopt(next:any) { if(!next) return;++projectGeneration;clearTimeout(searchTimer);++selectionRequest;++renderRequest;++referenceRequest;referenceId=null;reference?.destroy();reference=null;$('referencePane').replaceChildren();$('referencePane').classList.add('hidden');folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); relationships.reset(); if(view==='timeline'||view==='relationships')view='write'; project=next;confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
 
 function renderTree() {
   if(!project) return;
@@ -264,7 +281,7 @@ function renderBoard() {
   if(free) document.querySelectorAll<HTMLElement>('[data-card]').forEach(card=>{
     card.addEventListener('pointerdown',event=>{if(project.readOnly)return;const startX=event.clientX,startY=event.clientY,left=parseInt(card.style.left),top=parseInt(card.style.top);card.setPointerCapture(event.pointerId);let moved=false;
       const move=(e:PointerEvent)=>{moved=true;card.style.left=Math.max(0,left+e.clientX-startX)+'px';card.style.top=Math.max(0,top+e.clientY-startY)+'px'};
-      const up=async()=>{card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',up);if(moved){const d=await getDoc(card.dataset.card!);d.meta.cardX=parseInt(card.style.left);d.meta.cardY=parseInt(card.style.top);changed(d)}};
+      const up=()=>{card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',up);if(moved)projectEvent(async()=>{const d=await getDoc(card.dataset.card!);d.meta.cardX=parseInt(card.style.left);d.meta.cardY=parseInt(card.style.top);changed(d)})};
       card.addEventListener('pointermove',move);card.addEventListener('pointerup',up);
     });
   });
@@ -273,14 +290,14 @@ function renderOutline() {
   const docs=displayDocs(); $('editorPane').innerHTML=`<table class="outline-table"><thead><tr><th>Titel</th><th>Status</th><th>Zusammenfassung</th><th>Wörter</th><th>Ziel</th></tr></thead><tbody>${docs.map((d:any)=>`<tr tabindex="0" role="button" data-outline="${h(d.id)}"><td>${h(d.title)}</td><td><span class="status-pill">${h(d.meta.status||'Entwurf')}</span></td><td class="muted">${h((d.meta.synopsis??'').slice(0,90))}</td><td>${d.words}</td><td>${h(d.meta.target||'—')}</td></tr>`).join('')}</tbody></table>`;
 }
 async function renderReference() {
-  const request=++referenceRequest,owner=project,id=referenceId,pane=$('referencePane');
+  const request=++referenceRequest,owner=projectGeneration,id=referenceId,pane=$('referencePane');
   reference?.destroy();reference=null;pane.replaceChildren();pane.classList.toggle('hidden',!id);if(!id)return;
   try{
-    const d=await getDoc(id);if(request!==referenceRequest||owner!==project||id!==referenceId)return;
+    const d=await getDoc(id);if(request!==referenceRequest||owner!==projectGeneration||id!==referenceId)return;
     pane.innerHTML=`<div class="reference-head"><select id="referenceSelect" aria-label="Referenzabschnitt">${project.documents.filter((x:any)=>!x.deleted).map((x:any)=>`<option value="${h(x.id)}" ${x.id===id?'selected':''}>${h(x.title)}</option>`).join('')}</select><button data-action="splitView" aria-label="Zweite Ansicht schließen">×</button></div><p class="muted">Leseansicht · zum Bearbeiten im Projektbaum öffnen</p><div id="referenceContent"></div>`;
     if(d.kind==='asset')renderAsset($('referenceContent'),d);else reference=makeEditor($('referenceContent'),d,false);
     $('referenceSelect').addEventListener('change',()=>{referenceId=$<HTMLSelectElement>('referenceSelect').value;void renderReference()});
-  }catch(e:any){if(request!==referenceRequest||owner!==project)return;referenceId=null;pane.classList.add('hidden');toast(e.message,true)}
+  }catch(e:any){if(request!==referenceRequest||owner!==projectGeneration)return;referenceId=null;pane.classList.add('hidden');toast(e.message,true)}
 }
 function field(label:string,name:string,value:any='',type='text') { return `<div class="field"><label for="${name}">${h(label)}</label><input id="${name}" name="${name}" type="${type}" ${type==='number'?'step="any"':''} value="${h(value)}"></div>`; }
 function area(label:string,name:string,value:any='') { return `<div class="field"><label for="${name}">${h(label)}</label><textarea id="${name}" name="${name}">${h(value)}</textarea></div>`; }
@@ -302,8 +319,8 @@ function renderInspector() {
     $('commentList').innerHTML=found.length?found.map(n=>`<button data-note-id="${h(n.id)}">${n.kind}: ${h(n.text)}</button>`).join(''):'<p class="muted">Hier erscheinen deine Textanmerkungen. Doppelklick im Text öffnet eine Anmerkung.</p>';
   } else {
     target.innerHTML=`<button class="primary" data-action="snapshot">Textstand sichern</button><p class="muted">Ein Textstand bewahrt Text und Notizen dieses Abschnitts. Projektsicherungen enthalten zusätzlich die gesamte Struktur und Recherche.</p><div id="snapshotList"></div>`;
-    const owner=project,id=selected,listElement=$('snapshotList');
-    void rpc('snapshots',{id}).then(list=>{if(owner!==project||id!==selected||inspector!=='snapshots'||!listElement.isConnected)return;listElement.innerHTML=list.map((s:any)=>`<div class="snapshot"><strong>${h(s.title)}</strong><small>${new Date(s.created).toLocaleString('de-DE')}</small><div><button data-compare="${h(s.id)}">Vergleichen</button> <button data-restore-snapshot="${h(s.id)}">Wiederherstellen</button></div></div>`).join('')}).catch(e=>{if(owner===project&&id===selected&&listElement.isConnected)toast(e.message,true)});
+    const owner=projectGeneration,id=selected,listElement=$('snapshotList');
+    void rpc('snapshots',{id}).then(list=>{if(owner!==projectGeneration||id!==selected||inspector!=='snapshots'||!listElement.isConnected)return;listElement.innerHTML=list.map((s:any)=>`<div class="snapshot"><strong>${h(s.title)}</strong><small>${new Date(s.created).toLocaleString('de-DE')}</small><div><button data-compare="${h(s.id)}">Vergleichen</button> <button data-restore-snapshot="${h(s.id)}">Wiederherstellen</button></div></div>`).join('')}).catch(e=>{if(owner===projectGeneration&&id===selected&&listElement.isConnected)toast(e.message,true)});
   }
 }
 
@@ -322,16 +339,16 @@ async function addDocument(kind='text',template?:string) {
   const d=await rpc('create',{parent:parentForNew(),title:name,kind,body});await refresh();setDocument(d);view='write';await select(d.id);
 }
 async function moveDocument(id:string,parent:string,index:number) {await requireWrite();await refresh(await rpc('move',{id,parent,index}));await renderView()}
-async function trashDocument(id:string,owner=project?.id) {
+async function trashDocument(id:string,owner=projectGeneration) {
   await relationships.beforeLeave();
   await requireWrite();
-  if(project.id!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');
+  if(projectGeneration!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');
   const d=info(id);if(!d||d.deleted)throw new Error('Der Eintrag ist nicht mehr verfügbar.');
   if(!d.parentId)throw new Error('Die festen Projektbereiche bleiben erhalten.');
   const affected=orderedDocuments(project.documents,id,true);
   if(!await modal('In den Papierkorb verschieben?',`<p>„${h(d.title)}“${affected.length>1?' und die '+(affected.length-1)+' Untereinträge bleiben':' bleibt'} im Papierkorb wiederherstellbar.</p>${isStoryCard(d)?'<p>Szenenzuordnungen bleiben erhalten.</p>':''}`,'In den Papierkorb'))return;
-  if(project.id!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');
-  await requireWrite();if(project.id!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');await refresh(await rpc('trash',{id,deleted:true}));
+  if(projectGeneration!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');
+  await requireWrite();if(projectGeneration!==owner)throw new Error('Das Projekt hat sich geändert. Bitte den Eintrag erneut auswählen.');await refresh(await rpc('trash',{id,deleted:true}));
   if(referenceId&&info(referenceId)?.deleted){referenceId=null;await renderReference()}
   if(info(selected)?.deleted){
     let parent=d.parentId;while(info(parent)?.deleted||isStoryCard(info(parent)))parent=info(parent).parentId??'manuscript';
@@ -347,9 +364,9 @@ async function restoreDocument(id:string) {
   toast('Eintrag wiederhergestellt.');
 }
 async function saveProjectSettings(changes?:any) {
-  const owner=project.id,title=project.title,settings=JSON.parse(JSON.stringify({...project.settings,...changes})),baseSettings=structuredClone(confirmedSettings),baseTitle=confirmedTitle;await flush();
-  if(project?.id!==owner)throw new Error('Das Projekt wurde gewechselt. Die Einstellungen wurden nicht übernommen.');
-  await rpc('settings',{projectId:owner,title,settings,baseSettings,baseTitle});if(project?.id===owner)await refresh();
+  const owner=projectGeneration,projectId=project.id,title=project.title,settings=JSON.parse(JSON.stringify({...project.settings,...changes})),baseSettings=structuredClone(confirmedSettings),baseTitle=confirmedTitle;await flush();
+  if(projectGeneration!==owner)throw new Error('Das Projekt wurde gewechselt. Die Einstellungen wurden nicht übernommen.');
+  await rpc('settings',{projectId,title,settings,baseSettings,baseTitle});if(projectGeneration===owner)await refresh();
 }
 function updateFormatButtons() {document.querySelectorAll<HTMLElement>('[data-format]').forEach(b=>b.classList.toggle('active',!!active?.isActive(b.dataset.format!)))}
 async function setView(next:string) {await relationships.beforeLeave();await flush();view=next;if(next!=='board')collection=null;renderCollections();await renderView()}
@@ -437,16 +454,23 @@ const actions:Record<string,()=>any>={
   help:async()=>{await modal('Willkommen im Schreibatelier',`<p>Lege links Kapitel und Abschnitte an. Schreibe in der Mitte und halte rechts Zusammenfassungen, Schlagwörter und Notizen fest.</p><p>Die Pinnwand und die Gliederung zeigen die Unterabschnitte deiner Auswahl. Verschieben ändert überall dieselbe Projektstruktur.</p><p><b>Strg+S</b> speichert sofort. <b>F11</b> öffnet den Fokusmodus. Unter „Stände“ sicherst du Fassungen einzelner Abschnitte; unter Datei sicherst du das gesamte Projekt.</p><p>Recherchedateien fügst du über das Abschnittsmenü hinzu. Die zweite Ansicht bleibt zum Nachschlagen schreibgeschützt.</p><p>Über „Exportieren“ wählst du Texte und Ausgabeformat. Für DOCX, RTF, ODT, HTML, Markdown und EPUB brauchst du Pandoc; PDF benötigt außerdem Typst. Die Anwendung arbeitet ohne Konto.</p>`,'Schließen')},
   licenses:async()=>{const text=await rpc('licenses');await modal('Lizenzen und Herkunft',`<pre class="license-text">${h(text)}</pre>`,'Schließen')},
 };
-async function perform(action:string) {if(transitioning)return;try{if(!['new','open','restoreBackup','close'].includes(action))await relationships.beforeLeave();await actions[action]?.()}catch(e:any){toast(e.message,true)}}
+async function perform(action:string) {
+  if(transitioning)return;
+  try{
+    if(['new','open','restoreBackup','close','updates'].includes(action)){await actions[action]?.();return}
+    const work=async()=>{await relationships.beforeLeave();await actions[action]?.()};
+    if(action==='save')await work();else await runProjectAction(work);
+  }catch(e:any){toast(e.message,true)}
+}
 
 const documentContextMenu=$('documentContextMenu'),contextTrash=$<HTMLButtonElement>('contextTrash');
-let contextDocument='',contextProject='',contextOrigin:HTMLElement|null=null;
+let contextDocument='',contextProject=0,contextOrigin:HTMLElement|null=null;
 function openDocumentContext(event:MouseEvent|KeyboardEvent) {
   const row=(event.target as HTMLElement).closest<HTMLElement>('#tree [data-doc],[data-card],[data-outline],[data-timeline-scene],[data-story-action="open"]');
   if(!row)return;
   const id=row.dataset.doc??row.dataset.card??row.dataset.outline??row.dataset.id!,d=info(id);
   if(!d||d.deleted)return;
-  event.preventDefault();contextDocument=id;contextProject=project.id;contextOrigin=row;
+  event.preventDefault();contextDocument=id;contextProject=projectGeneration;contextOrigin=row;
   $('documentContextTitle').textContent=d.title;
   contextTrash.disabled=project.readOnly||!d.parentId;
   $('documentContextHint').textContent=project.readOnly?'Dieses Projekt ist schreibgeschützt.':!d.parentId?'Die festen Projektbereiche bleiben erhalten.':'';
@@ -465,41 +489,41 @@ documentContextMenu.addEventListener('keydown',event=>{
 });
 contextTrash.addEventListener('click',()=>{
   const id=contextDocument,owner=contextProject;documentContextMenu.hidePopover();
-  void trashDocument(id,owner).catch(e=>toast(e.message,true)).finally(()=>{
+  projectEvent(async()=>{try{await trashDocument(id,owner)}finally{
     const row=document.querySelector<HTMLElement>(`#tree [data-doc="${CSS.escape(info(id)?.deleted?selected:id)}"]`);row?.focus({preventScroll:true});
-  });
+  }});
 });
 
 document.addEventListener('pointerdown',event=>{if((event.target as HTMLElement).closest('[data-action="proof"],[data-inspector="proof"],[data-inspector="cards"],[data-story-action="link"]'))event.preventDefault()});
 document.addEventListener('click',event=>{
   const el=event.target as HTMLElement;
-  const folderEntry=el.closest<HTMLElement>('[data-folder-entry]');if(folderEntry){void select(folderEntry.dataset.folderEntry!).catch(e=>toast(e.message,true));return}
+  const folderEntry=el.closest<HTMLElement>('[data-folder-entry]');if(folderEntry){projectEvent(()=>select(folderEntry.dataset.folderEntry!));return}
   const recent=el.closest<HTMLButtonElement>('[data-recent-project]');if(recent){recent.disabled=true;void transition(async()=>adopt(await rpc('openRecent',{path:recent.dataset.recentProject}))).catch(e=>toast(e.message,true)).finally(()=>{recent.disabled=false});return}
-  const link=el.closest<HTMLAnchorElement>('.tiptap a');if(link){event.preventDefault();const href=link.getAttribute('href')??'';if(href.startsWith('#')){const id=href.slice(1);if(info(id)&&!info(id).deleted){if(!isStoryCard(info(id)))view='write';void select(id).catch(e=>toast(e.message,true))}else toast('Der verknüpfte Abschnitt ist nicht verfügbar.',true)}else if(/^(https?:\/\/|mailto:)/i.test(href))window.open(href,'_blank','noopener');return}
-  const noteItem=el.closest<HTMLElement>('[data-note-id]');if(noteItem){void editNote(noteItem.dataset.noteId!).catch(e=>toast(e.message,true));return}
+  const link=el.closest<HTMLAnchorElement>('.tiptap a');if(link){event.preventDefault();const href=link.getAttribute('href')??'';if(href.startsWith('#')){const id=href.slice(1);if(info(id)&&!info(id).deleted)projectEvent(()=>{if(!isStoryCard(info(id)))view='write';return select(id)});else toast('Der verknüpfte Abschnitt ist nicht verfügbar.',true)}else if(/^(https?:\/\/|mailto:)/i.test(href))window.open(href,'_blank','noopener');return}
+  const noteItem=el.closest<HTMLElement>('[data-note-id]');if(noteItem){projectEvent(()=>editNote(noteItem.dataset.noteId!));return}
   const menu=el.closest<HTMLElement>('[data-menu-action]');if(menu){const dialog=$<HTMLDialogElement>('dialog');dialog.addEventListener('close',()=>{void perform(menu.dataset.menuAction!)},{once:true});dialog.close('cancel');return}
   const cmd=el.closest<HTMLElement>('[data-editor-command]');if(cmd){const c=cmd.dataset.editorCommand!;$<HTMLDialogElement>('dialog').close('cancel');(active?.chain().focus() as any)?.[c]?.().run();return}
   const action=el.closest<HTMLElement>('[data-action]');if(action){void perform(action.dataset.action!);return}
-  const viewButton=el.closest<HTMLElement>('[data-view]');if(viewButton){void setView(viewButton.dataset.view!).catch(e=>toast(e.message,true));return}
-  const tab=el.closest<HTMLElement>('[data-inspector]');if(tab){void relationships.beforeLeave().then(()=>{inspector=tab.dataset.inspector!;renderInspector()}).catch(e=>toast(e.message,true));return}
+  const viewButton=el.closest<HTMLElement>('[data-view]');if(viewButton){projectEvent(()=>setView(viewButton.dataset.view!));return}
+  const tab=el.closest<HTMLElement>('[data-inspector]');if(tab){projectEvent(async()=>{await relationships.beforeLeave();inspector=tab.dataset.inspector!;renderInspector()});return}
   const collapse=el.closest<HTMLElement>('[data-collapse]');if(collapse){const id=collapse.dataset.collapse!;collapsed.has(id)?collapsed.delete(id):collapsed.add(id);renderTree();return}
-  const doc=el.closest<HTMLElement>('[data-doc]');if(doc){folderText=null;void select(doc.dataset.doc!).catch(e=>toast(e.message,true));return}
-  const collect=el.closest<HTMLElement>('[data-collection]');if(collect){void relationships.beforeLeave().then(()=>flush()).then(async()=>{collection=project.settings.collections[Number(collect.dataset.collection)];view='board';await renderView();renderCollections()}).catch(e=>toast(e.message,true));return}
+  const doc=el.closest<HTMLElement>('[data-doc]');if(doc){projectEvent(()=>{folderText=null;return select(doc.dataset.doc!)});return}
+  const collect=el.closest<HTMLElement>('[data-collection]');if(collect){projectEvent(async()=>{await relationships.beforeLeave();await flush();collection=project.settings.collections[Number(collect.dataset.collection)];view='board';await renderView();renderCollections()});return}
   const fmt=el.closest<HTMLElement>('[data-format]');if(fmt&&active){const format=fmt.dataset.format!;const chain=active.chain().focus();if(['left','center','right','justify'].includes(format))chain.setTextAlign(format).run();else(chain as any)['toggle'+format[0].toUpperCase()+format.slice(1)]?.().run();updateFormatButtons();return}
-  const asset=el.closest<HTMLElement>('[data-asset-download]');if(asset){void rpc('exportAsset',{id:asset.dataset.assetDownload}).catch(e=>toast(e.message,true));return}
-  const result=el.closest<HTMLElement>('[data-result]');if(result){view='write';void select(result.dataset.result!);return}
-  const restore=el.closest<HTMLElement>('[data-restore-doc]');if(restore){void restoreDocument(restore.dataset.restoreDoc!).catch(e=>toast(e.message,true));return}
-  const compare=el.closest<HTMLElement>('[data-compare]');if(compare){void(async()=>{const owner=project,id=selected;await flush();const s=await rpc('getSnapshot',{id,snapshotId:compare.dataset.compare});if(owner!==project||id!==selected)return;await modal('Änderungen seit „'+s.title+'“',`<p class="muted">Vergleich des Haupttexts: rot entfernt, grün ergänzt. Formatierung und Fußnoten werden hier nicht verglichen.</p><div class="diff dialog-body-scroll">${diffWords(plainText(s.body),plainText(current().body)).map(p=>`<${p.added?'ins':p.removed?'del':'span'}>${h(p.value)}</${p.added?'ins':p.removed?'del':'span'}>`).join('')}</div>`,'Schließen')})().catch(e=>toast(e.message,true));return}
-  const restoreSnapshot=el.closest<HTMLElement>('[data-restore-snapshot]');if(restoreSnapshot){void(async()=>{await requireWrite();if(await modal('Textstand wiederherstellen','<p>Der aktuelle Text wird zuvor als eigener Stand gesichert.</p>','Wiederherstellen')){setDocument(await rpc('restoreSnapshot',{id:selected,snapshotId:restoreSnapshot.dataset.restoreSnapshot}));await select(selected)}})().catch(e=>toast(e.message,true));return}
+  const asset=el.closest<HTMLElement>('[data-asset-download]');if(asset){projectEvent(()=>rpc('exportAsset',{id:asset.dataset.assetDownload}));return}
+  const result=el.closest<HTMLElement>('[data-result]');if(result){projectEvent(()=>{view='write';return select(result.dataset.result!)});return}
+  const restore=el.closest<HTMLElement>('[data-restore-doc]');if(restore){projectEvent(()=>restoreDocument(restore.dataset.restoreDoc!));return}
+  const compare=el.closest<HTMLElement>('[data-compare]');if(compare){projectEvent(async()=>{const owner=projectGeneration,id=selected;await flush();const s=await rpc('getSnapshot',{id,snapshotId:compare.dataset.compare});if(owner!==projectGeneration||id!==selected)return;await modal('Änderungen seit „'+s.title+'“',`<p class="muted">Vergleich des Haupttexts: rot entfernt, grün ergänzt. Formatierung und Fußnoten werden hier nicht verglichen.</p><div class="diff dialog-body-scroll">${diffWords(plainText(s.body),plainText(current().body)).map(p=>`<${p.added?'ins':p.removed?'del':'span'}>${h(p.value)}</${p.added?'ins':p.removed?'del':'span'}>`).join('')}</div>`,'Schließen')});return}
+  const restoreSnapshot=el.closest<HTMLElement>('[data-restore-snapshot]');if(restoreSnapshot){projectEvent(async()=>{const id=selected;await requireWrite();if(await modal('Textstand wiederherstellen','<p>Der aktuelle Text wird zuvor als eigener Stand gesichert.</p>','Wiederherstellen')){setDocument(await rpc('restoreSnapshot',{id,snapshotId:restoreSnapshot.dataset.restoreSnapshot}));await select(id)}});return}
 });
 document.addEventListener('dblclick',event=>{
-  const el=event.target as HTMLElement;const card=el.closest<HTMLElement>('[data-card],[data-outline]');if(card){view='write';void select(card.dataset.card??card.dataset.outline!);return}
-  const note=el.closest<HTMLElement>('.editor-sheet [data-footnote],.editor-sheet [data-comment]');if(note)void editNote(note.dataset.footnote??note.dataset.comment!).catch(e=>toast(e.message,true));
+  const el=event.target as HTMLElement;const card=el.closest<HTMLElement>('[data-card],[data-outline]');if(card){projectEvent(()=>{view='write';return select(card.dataset.card??card.dataset.outline!)});return}
+  const note=el.closest<HTMLElement>('.editor-sheet [data-footnote],.editor-sheet [data-comment]');if(note)projectEvent(()=>editNote(note.dataset.footnote??note.dataset.comment!));
 });
 $('documentTitle').addEventListener('input',()=>{const d=current();if(d){d.title=$<HTMLInputElement>('documentTitle').value;changed(d)}});
-$('combined').addEventListener('change',()=>{combined=$<HTMLInputElement>('combined').checked;void flush().then(renderView).catch(e=>toast(e.message,true))});
+$('combined').addEventListener('change',()=>projectEvent(async()=>{combined=$<HTMLInputElement>('combined').checked;await flush();await renderView()}));
 $('paragraphStyle').addEventListener('change',()=>{if(!active)return;const style=$<HTMLSelectElement>('paragraphStyle').value;const chain=active.chain().focus();if(style==='p')chain.setParagraph().run();else if(style==='quote')chain.toggleBlockquote().run();else chain.setHeading({level:Number(style[1]) as any}).run()});
-$('projectSearch').addEventListener('input',()=>{clearTimeout(searchTimer);const query=$<HTMLInputElement>('projectSearch').value;searchTimer=setTimeout(()=>{void(async()=>{await relationships.beforeLeave();await flush();if(!query){await renderView();return}const result=await rpc('search',{query});destroyEditors();$('formatbar').classList.add('hidden');$('editorPane').innerHTML=`<h2>Suche nach „${h(query)}“</h2><p class="muted">${result.length} Treffer (maximal 500)</p>${result.map((d:any)=>`<article class="search-result" data-result="${h(d.id)}" role="button" tabindex="0"><h3>${h(d.title)}</h3><p>${h(d.excerpt)}</p></article>`).join('')}`})().catch(e=>toast(e.message,true))},250)});
+$('projectSearch').addEventListener('input',()=>{clearTimeout(searchTimer);const owner=projectGeneration,query=$<HTMLInputElement>('projectSearch').value;searchTimer=setTimeout(()=>{if(owner!==projectGeneration||transitioning)return;projectEvent(async()=>{await relationships.beforeLeave();await flush();if(!query){await renderView();return}const result=await rpc('search',{query});destroyEditors();$('formatbar').classList.add('hidden');$('editorPane').innerHTML=`<h2>Suche nach „${h(query)}“</h2><p class="muted">${result.length} Treffer (maximal 500)</p>${result.map((d:any)=>`<article class="search-result" data-result="${h(d.id)}" role="button" tabindex="0"><h3>${h(d.title)}</h3><p>${h(d.excerpt)}</p></article>`).join('')}`})},250)});
 document.addEventListener('keydown',event=>{
   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();void perform('save')}
   if(event.key==='F11'){event.preventDefault();void perform('focus')}
@@ -510,7 +534,7 @@ document.addEventListener('keydown',event=>{
 let dragged='';
 document.addEventListener('dragstart',event=>{const el=(event.target as HTMLElement).closest<HTMLElement>('[data-doc],[data-card]');if(el){dragged=el.dataset.doc??el.dataset.card!;event.dataTransfer?.setData('text/schreibatelier',dragged)}});
 document.addEventListener('dragover',event=>{if(dragged&&(event.target as HTMLElement).closest('[data-doc],[data-card]')){event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect='move'}});
-document.addEventListener('drop',event=>{const target=(event.target as HTMLElement).closest<HTMLElement>('[data-doc],[data-card]');if(!target||!dragged)return;event.preventDefault();const source=dragged;dragged='';const id=target.dataset.doc??target.dataset.card!;if(id===source)return;const d=info(id);const parent=target.dataset.card?d.parentId:d.id;const index=target.dataset.card?d.position:project.documents.filter((x:any)=>x.parentId===parent).length;void moveDocument(source,parent,index).catch(e=>toast(e.message,true))});
+document.addEventListener('drop',event=>{const target=(event.target as HTMLElement).closest<HTMLElement>('[data-doc],[data-card]');if(!target||!dragged)return;event.preventDefault();const source=dragged;dragged='';const id=target.dataset.doc??target.dataset.card!;if(id===source)return;const d=info(id);const parent=target.dataset.card?d.parentId:d.id;const index=target.dataset.card?d.position:project.documents.filter((x:any)=>x.parentId===parent).length;projectEvent(()=>moveDocument(source,parent,index))});
 document.addEventListener('dragend',()=>dragged='');
 
 async function integrationCardCheck(checks:string[]) {

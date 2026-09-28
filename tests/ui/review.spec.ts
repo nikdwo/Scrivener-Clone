@@ -16,9 +16,11 @@ test.beforeEach(async({page})=>{
         const earlyDocument=action==='document'?clone(state.project.documents.find((d:any)=>d.id===args.id)):null;
         if(state.hold[action]&&(!state.holdDocumentId||action!=='document'||args.id===state.holdDocumentId))await new Promise<void>((resolve,reject)=>state.waiting.push({action,args:clone(args),resolve,reject}));
         let result:any=null;
-        if(action==='ready')result={project:clone(state.project),tools:{},preferences:clone(state.preferences),updateInfo:{version:'0.1.0-alpha.6',portable:false},recentProjects:[]};
+        if(action==='ready')result={project:clone(state.project),tools:{},preferences:clone(state.preferences),updateInfo:{version:'0.1.0-alpha.6',portable:false},recentProjects:[{title:'Review B',filePath:'review-b.schreibprojekt'}]};
         else if(action==='document'){if(state.failDocumentId===args.id)throw new Error('Dokument nicht lesbar');result=earlyDocument}
         else if(action==='state')result=clone(state.project);
+        else if(action==='create'){result={...doc(crypto.randomUUID(),args.parent,args.kind,args.title),body:args.body??body(''),meta:clone(args.meta??{})};state.project.documents.push(result)}
+        else if(action==='settings'){if(args.projectId!==state.project.id)throw new Error('Wrong project');state.project.title=args.title;state.project.settings=clone(args.settings);result=clone(state.project)}
         else if(action==='save'){
           state.saveNumber++;if(state.failSaveNumber===state.saveNumber)throw new Error('Test-Speicherfehler');
           result=args.documents.map((d:any)=>{const saved=state.project.documents.find((x:any)=>x.id===d.id);if(saved.revision!==d.revision)throw new Error('Versionskonflikt');Object.assign(saved,clone(d),{revision:d.revision+1});return clone(saved)});
@@ -34,7 +36,7 @@ test.beforeEach(async({page})=>{
       }catch(e:any){for(const l of listeners)l({data:{id,ok:false,error:e.message}})}
     }}}});
   });
-  await page.goto('http://127.0.0.1:4177/index.html');await expect(page.locator('.folder-overview')).toBeVisible();
+  await page.goto('http://127.0.0.1:4177/index.html',{waitUntil:'domcontentloaded'});await expect(page.locator('.folder-overview')).toBeVisible();
 });
 const editor=(page:Page)=>page.locator('.editor-sheet .tiptap');
 async function scene(page:Page){await page.locator('#tree [data-doc="scene"]').click();await expect(editor(page)).toContainText('Text vorher')}
@@ -42,6 +44,92 @@ async function pending(page:Page,action:string,count=1){await expect.poll(()=>pa
 async function command(page:Page,action:string){await page.evaluate(action=>(window as any).__review.command(action),action)}
 async function release(page:Page,action:string,error?:string){await page.evaluate(({action,error})=>(window as any).__review.release(action,error),{action,error})}
 async function calls(page:Page,action:string){return page.evaluate(action=>(window as any).__review.calls.filter((q:any)=>q.action===action).length,action)}
+async function cancelDialog(page:Page){await Promise.all([page.evaluate(()=>new Promise<void>(resolve=>document.querySelector('#dialog')!.addEventListener('close',()=>resolve(),{once:true}))),page.locator('#dialog .dialog-actions [value="cancel"]').click()])}
+
+test('review F2 action barrier covers create before its first save await and its reply',async({page})=>{
+  await scene(page);await page.evaluate(()=>{const s=(window as any).__review;s.hold.save=true;s.hold.create=true;s.nextProject=structuredClone(s.project);s.nextProject.title='Review B'});
+  await editor(page).fill('Changed A');await page.keyboard.press('Control+s');await pending(page,'save');
+  await page.evaluate(()=>{const s=(window as any).__review;s.command('newDocument');s.command('open')});
+  await expect(page.locator('#toast')).toContainText('laufende Aktion');expect(await calls(page,'open')).toBe(0);await expect(page.locator('#workspace')).not.toHaveAttribute('inert','');
+  await release(page,'save');await expect(page.locator('#dialogTitle')).toHaveText('Neuer Abschnitt');await page.locator('#value').fill('Intended for A');await page.locator('#dialogSubmit').click();await pending(page,'create');
+  await command(page,'open');expect(await calls(page,'open')).toBe(0);await release(page,'create');await expect(page.locator('#documentTitle')).toHaveValue('Intended for A');
+  expect(await page.evaluate(()=>(window as any).__review.project.documents.some((d:any)=>d.title==='Intended for A'))).toBe(true);
+  await command(page,'open');await expect(page.locator('#projectLabel')).toHaveText('Review B');expect(await page.evaluate(()=>(window as any).__review.project.documents.some((d:any)=>d.title==='Intended for A'))).toBe(false);
+});
+
+for(const action of ['open','new','openRecent','restoreBackup','close','updateInstall'])test(`review F2 action barrier rejects ${action} throughout settings preferences RPC and refresh`,async({page})=>{
+  if(action==='updateInstall'){await command(page,'updates');await page.locator('#updateDownload').click();await expect(page.locator('#updateInstall')).toBeVisible();await page.locator('#updateClose').click()}
+  await page.locator('[data-action="settings"]').click();await page.locator('#projectTitle').fill('Title intended for A');
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.preferences=true;s.hold.settings=true;s.hold.state=true;s.nextProject=structuredClone(s.project);s.nextProject.title='Review B'});
+  await page.locator('#dialogSubmit').click();await pending(page,'preferences');
+  const attempt=()=>page.evaluate(action=>{if(action==='openRecent')document.querySelector<HTMLButtonElement>('[data-recent-project]')!.click();else if(action==='updateInstall')document.querySelector<HTMLButtonElement>('#updateInstall')!.click();else (window as any).__review.command(action)},action);
+  for(const reply of ['preferences','settings','state']){
+    await attempt();await expect(page.locator(action==='updateInstall'?'#updateStatus':'#toast')).toContainText('laufende Aktion');expect(await calls(page,action)).toBe(0);await expect(page.locator('#workspace')).not.toHaveAttribute('inert','');
+    await release(page,reply);if(reply!=='state')await pending(page,reply==='preferences'?'settings':'state');
+  }
+  await expect(page.locator('#projectLabel')).toHaveText('Title intended for A');expect(await page.evaluate(()=>(window as any).__review.project.title)).toBe('Title intended for A');
+  await command(page,'open');await expect(page.locator('#projectLabel')).toHaveText('Review B');
+});
+
+for(const feature of ['cards','timeline','proof'])test(`review F2 action barrier covers direct ${feature} settings entry`,async({page})=>{
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.settings=true;s.nextProject=structuredClone(s.project);s.nextProject.title='Review B'});
+  if(feature==='cards'){await page.locator('[data-inspector="cards"]').click();await page.locator('#storyRecognition').uncheck()}
+  else if(feature==='timeline'){await page.locator('[data-view="timeline"]').click();await page.locator('#timelineView [data-timeline-action="setup"]').click();await page.locator('#dialogSubmit').click()}
+  else{await scene(page);await page.locator('[data-action="proof"]').click();await page.locator('#proofLanguage').selectOption('de-CH')}
+  await pending(page,'settings');await command(page,'open');await expect(page.locator('#toast')).toContainText('laufende Aktion');expect(await calls(page,'open')).toBe(0);
+  await release(page,'settings');await expect.poll(()=>calls(page,'state')).toBe(1);await command(page,'open');await expect(page.locator('#projectLabel')).toHaveText('Review B');
+});
+
+test('review F2 action barrier releases failed and canceled actions without losing editor input',async({page})=>{
+  await scene(page);await editor(page).fill('Keep A');await page.evaluate(()=>(window as any).__review.hold.create=true);
+  await command(page,'newDocument');await page.locator('#value').fill('Failed create');await page.locator('#dialogSubmit').click();await pending(page,'create');await command(page,'open');expect(await calls(page,'open')).toBe(0);
+  await release(page,'create','Create failed');await expect(page.locator('#toast')).toContainText('Create failed');await expect(editor(page)).toContainText('Keep A');
+  await command(page,'newDocument');await cancelDialog(page);await command(page,'open');await expect.poll(()=>calls(page,'open')).toBe(1);
+});
+
+test('review F2 action barrier covers direct navigation waiting for a document',async({page})=>{
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.document=true;s.holdDocumentId='scene';s.nextProject=structuredClone(s.project);s.nextProject.title='Review B'});
+  await page.locator('#tree [data-doc="scene"]').click();await pending(page,'document');await command(page,'open');await expect(page.locator('#toast')).toContainText('laufende Aktion');expect(await calls(page,'open')).toBe(0);
+  await release(page,'document');await expect(editor(page)).toContainText('Text vorher');await command(page,'open');await expect(page.locator('#projectLabel')).toHaveText('Review B');
+});
+
+test('review F2 project generation survives refresh during passive reference loading',async({page})=>{
+  await scene(page);await page.locator('[data-action="splitView"]').click();await expect(page.locator('#referenceContent')).toContainText('Text vorher');
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.document=true;s.holdDocumentId='second'});await page.locator('#referenceSelect').selectOption('second');await pending(page,'document');
+  await page.locator('[data-action="settings"]').click();await page.locator('#projectTitle').fill('Refreshed A');await page.locator('#dialogSubmit').click();await expect(page.locator('#projectLabel')).toHaveText('Refreshed A');
+  await release(page,'document');await expect(page.locator('#referenceContent')).toContainText('Zweiter Text');await expect(page.locator('#toast')).not.toContainText('geändert');
+});
+
+test('review F2 action barrier covers direct relationship submit',async({page})=>{
+  await page.evaluate(()=>{const s=(window as any).__review;s.nextProject=structuredClone(s.project);for(const id of ['1'.repeat(32),'2'.repeat(32)])s.nextProject.documents.push({...structuredClone(s.project.documents.find((d:any)=>d.id==='scene')),id,parentId:'research',title:id[0],meta:{storyCard:{type:'figure',aliases:[],fields:{}}}});s.command('open')});
+  await page.locator('[data-view="relationships"]').click();await page.locator('#networkView [data-network-action="new"]').click();await page.locator('#relationship-fromId').selectOption('1'.repeat(32));await page.locator('#relationship-toId').selectOption('2'.repeat(32));await page.locator('#relationship-label').fill('kennt');
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.settings=true;s.nextProject=structuredClone(s.project);s.nextProject.title='Review B'});
+  await page.locator('#relationshipForm [type="submit"]').click();await pending(page,'settings');await command(page,'open');await expect(page.locator('#toast')).toContainText('laufende Aktion');expect(await calls(page,'open')).toBe(1);await expect(page.locator('#relationship-label')).toHaveValue('kennt');
+  await release(page,'settings');await expect(page.locator('#relationshipForm')).toHaveCount(0);expect(await page.evaluate(()=>(window as any).__review.project.settings.relationshipNetwork.edges[0].label)).toBe('kennt');
+  await command(page,'open');await expect(page.locator('#projectLabel')).toHaveText('Review B');expect(await page.evaluate(()=>(window as any).__review.project.settings.relationshipNetwork)).toBeUndefined();
+});
+
+test('review F2 project adoption discards a pending search timer',async({page})=>{
+  await page.clock.install();
+  await page.evaluate(()=>{const s=(window as any).__review;s.nextProject=structuredClone(s.project);s.nextProject.title='Review B';const input=document.querySelector<HTMLInputElement>('#projectSearch')!;input.value='From A';input.dispatchEvent(new Event('input',{bubbles:true}));s.command('open')});
+  await expect(page.locator('#projectLabel')).toHaveText('Review B');await page.clock.fastForward(500);expect(await calls(page,'search')).toBe(0);await expect(page.locator('.folder-overview')).toBeVisible();
+});
+
+test('review F2 late reference response preserves a newer editable cache entry',async({page})=>{
+  await scene(page);await page.locator('[data-action="splitView"]').click();await expect(page.locator('#referenceContent')).toContainText('Text vorher');
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.document=true;s.holdDocumentId='second'});await page.locator('#referenceSelect').selectOption('second');await pending(page,'document');
+  await page.evaluate(()=>(window as any).__review.hold.document=false);await page.locator('#tree [data-doc="second"]').click();await expect(editor(page)).toContainText('Zweiter Text');await editor(page).fill('Neue Eingabe bleibt');
+  await release(page,'document');await command(page,'save');await expect(page.locator('#saveState')).toContainText('Alle Änderungen gespeichert');await expect(editor(page)).toContainText('Neue Eingabe bleibt');
+  expect(await page.evaluate(()=>(window as any).__review.project.documents.find((d:any)=>d.id==='second').body)).toContain('Neue Eingabe bleibt');
+});
+
+test('review F2 late reference reloads a revision superseded by refresh',async({page})=>{
+  await scene(page);await page.locator('[data-action="splitView"]').click();await expect(page.locator('#referenceContent')).toContainText('Text vorher');
+  await page.evaluate(()=>{const s=(window as any).__review;s.hold.document=true;s.holdDocumentId='second'});await page.locator('#referenceSelect').selectOption('second');await pending(page,'document');
+  await page.evaluate(()=>{const s=(window as any).__review,d=s.project.documents.find((d:any)=>d.id==='second');d.revision++;d.body=JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Aktuelle Revision'}]}]})});
+  await page.locator('[data-action="settings"]').click();await page.locator('#dialogSubmit').click();await expect.poll(()=>calls(page,'state')).toBe(1);
+  await page.evaluate(()=>(window as any).__review.hold.document=false);await release(page,'document');await expect(page.locator('#referenceContent')).toContainText('Aktuelle Revision');
+});
 
 test('review regression F2 drains newer edits for every waiter before terminal close',async({page})=>{
   await scene(page);await page.evaluate(()=>{(window as any).__review.hold.save=true});
@@ -141,7 +229,7 @@ test('review regression F2 open dialog preserves its draft and rejects native pr
   await page.locator('[data-action="settings"]').click();await page.locator('#pandoc').fill('Entwurf.exe');
   await command(page,'open');await command(page,'close');await expect(page.locator('#toast')).toContainText('Dialog');
   expect(await calls(page,'open')).toBe(0);expect(await calls(page,'close')).toBe(0);await expect(page.locator('#dialog')).toBeVisible();await expect(page.locator('#pandoc')).toHaveValue('Entwurf.exe');await expect(page.locator('#workspace')).not.toHaveAttribute('inert','');
-  await page.locator('#dialog .dialog-actions [value="cancel"]').click();await command(page,'open');await expect.poll(()=>calls(page,'open')).toBe(1);await expect(page.locator('#workspace')).not.toHaveAttribute('inert','');
+  await cancelDialog(page);await command(page,'open');await expect.poll(()=>calls(page,'open')).toBe(1);await expect(page.locator('#workspace')).not.toHaveAttribute('inert','');
 });
 
 test('review regression F13 three fast theme changes settle to the last confirmed preference after failure',async({page})=>{

@@ -158,7 +158,7 @@ test.beforeEach(async({page})=>{
           result={issues:args.blocks.flatMap((b:any)=>[['Feler','Fehler'],['Gramatik','Grammatik'],['Mara','Maria']].flatMap(([original,replacement])=>{const offset=b.text.indexOf(original);return offset<0?[]:[{block:b.id,offset,length:original.length,original,replacements:[replacement],message:'Bitte Schreibweise prüfen.',category:'spelling',rule:'TEST'}]}))};
         }
         else if(action==='state')result=clone(project);
-        else if(action==='open')result=clone(project);
+        else if(action==='open'){const t=(window as any).__test;t.openCount=(t.openCount??0)+1;if(t.nextProject){docs.splice(0,docs.length,...t.nextProject.documents);Object.assign(project,t.nextProject,{documents:docs});delete t.nextProject}result=clone(project)}
         else if(action==='openRecent'){if((window as any).__test.recentError)throw new Error('Das Projekt wurde verschoben oder gelöscht.');(window as any).__test.openedRecent=args.path;result=clone(project);result.filePath=args.path}
         else if(action==='document')result=clone(docs.find(d=>d.id===args.id));
         else if(action==='save'||action==='replace'){await new Promise(r=>setTimeout(r,(window as any).__test.saveDelay));if((window as any).__test.failSave)throw new Error('Datenträger ist schreibgeschützt.');result=args.documents.map((d:any)=>{const old=docs.find(x=>x.id===d.id);if(old.revision!==d.revision)throw new Error('Versionskonflikt');if(action==='replace')snapshots.push({...clone(old),documentId:old.id,title:'Vor Suchen und Ersetzen'});Object.assign(old,clone(d),{revision:d.revision+1});return clone(old)})}
@@ -172,7 +172,7 @@ test.beforeEach(async({page})=>{
         }
         else if(action==='snapshots')result=snapshots.filter(s=>s.documentId===args.id).map(({id,documentId,title,created})=>({id,documentId,title,created}));
         else if(action==='getSnapshot'){result=clone(snapshots.find(s=>s.documentId===args.id&&s.id===args.snapshotId));if(!result)throw new Error('Textstand nicht gefunden.');}
-        else if(action==='settings'){await new Promise(r=>setTimeout(r,(window as any).__test.settingsDelay??0));if(args.projectId!==project.id)throw new Error('Das Projekt wurde gewechselt.');if(project.readOnly||(window as any).__test.failSettings)throw new Error('Einstellungen konnten nicht gespeichert werden.');if(args.baseTitle===undefined||args.title!==args.baseTitle)project.title=args.title;
+        else if(action==='settings'){if((window as any).__test.holdSettings)await new Promise<void>(resolve=>{(window as any).__test.releaseSettings=resolve});await new Promise(r=>setTimeout(r,(window as any).__test.settingsDelay??0));if(args.projectId!==project.id)throw new Error('Das Projekt wurde gewechselt.');if(project.readOnly||(window as any).__test.failSettings)throw new Error('Einstellungen konnten nicht gespeichert werden.');if(args.baseTitle===undefined||args.title!==args.baseTitle)project.title=args.title;
           if(args.baseSettings){for(const key of new Set([...Object.keys(args.settings),...Object.keys(args.baseSettings)])){if(JSON.stringify(args.settings[key])===JSON.stringify(args.baseSettings[key]))continue;if(JSON.stringify(project.settings[key])!==JSON.stringify(args.baseSettings[key])&&JSON.stringify(project.settings[key])!==JSON.stringify(args.settings[key]))throw new Error('Diese Projekteinstellung wurde zwischenzeitlich geändert.');if(key in args.settings)project.settings[key]=clone(args.settings[key]);else delete project.settings[key]}}
           else project.settings=args.settings;result=clone(project)}
         else if(action==='search')result=docs.filter(d=>d.body.includes(args.query)||d.title.includes(args.query)).map(d=>({...d,excerpt:'Gefundener Text'}));
@@ -259,8 +259,13 @@ test('timeline settings preserve concurrent scene edits and allow deleting an un
   await expect.poll(()=>page.evaluate(()=>(window as any).__test.docs.find((d:any)=>d.id==='scene').meta.timeline.end.day)).toBe(4);
   await expect(page.locator('#timelineEndDay')).toHaveValue('4');await page.locator('[data-timeline-action="manage"]').click();
   await page.locator('.timeline-strand-entry').filter({hasText:'Unbenutzt'}).locator('[data-timeline-action="deleteStrand"]').click();await page.locator('#dialogSubmit').click();await expect(page.locator('#timelineSceneStrand')).not.toContainText('Unbenutzt');
-  await page.locator('#inspectorContent [data-timeline-action="newStrand"]').click();await page.locator('#timelineStrandName').fill('Verspätet');await page.locator('#dialogSubmit').click();
-  await page.evaluate(()=>{const t=(window as any).__test;t.project.id='new-timeline-project';t.project.settings={};t.docs.forEach((d:any)=>delete d.meta.timeline);t.listeners.forEach((l:Function)=>l({data:{type:'command',action:'open'}}))});
+  await page.locator('#inspectorContent [data-timeline-action="newStrand"]').click();await page.locator('#timelineStrandName').fill('Verspätet');
+  await page.evaluate(()=>{const t=(window as any).__test;t.holdSettings=true;t.nextProject=structuredClone(t.project);t.nextProject.id='new-timeline-project';t.nextProject.settings={};t.nextProject.documents.forEach((d:any)=>delete d.meta.timeline)});
+  await page.locator('#dialogSubmit').click();await expect.poll(()=>page.evaluate(()=>!!(window as any).__test.releaseSettings)).toBe(true);
+  await page.evaluate(()=>{const t=(window as any).__test;t.listeners.forEach((l:Function)=>l({data:{type:'command',action:'open'}}))});
+  await expect(page.locator('#toast')).toContainText('laufende Aktion');expect(await page.evaluate(()=>(window as any).__test.openCount??0)).toBe(0);
+  await page.evaluate(()=>{const t=(window as any).__test;t.holdSettings=false;t.settingsDelay=0;t.releaseSettings()});await expect(page.locator('#timelineSceneStrand')).toContainText('Verspätet');
+  await page.evaluate(()=>{const t=(window as any).__test;t.listeners.forEach((l:Function)=>l({data:{type:'command',action:'open'}}))});
   await expect(page.locator('[data-view="write"]')).toHaveClass('active');await page.locator('[data-view="timeline"]').click();await expect(page.locator('#timelineView [data-timeline-action="setup"]')).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>(window as any).__test.project.settings.timeline??null)).toBe(null);
 });
@@ -554,10 +559,13 @@ test('style analysis settings persist and failed saves or read-only projects kee
   await expect(page.locator('#styleSentences')).toBeDisabled();await expect(page.locator('#proofAuto')).toBeDisabled();await page.locator('#proofRun').click();await expect(page.locator('.proof-finding')).toHaveCount(1);
 });
 
-test('style analysis pending preference save cannot overwrite a different project',async({page})=>{
+test('style analysis pending preference save rejects project switching until completion',async({page})=>{
   await openStyleAnalysis(page,styleSample);
-  await page.evaluate(()=>{(window as any).__test.settingsDelay=300});await page.locator('#styleWording').click();
-  await page.evaluate(()=>{const next=(window as any).__test.project;next.id='another-project';next.title='Zweites Projekt';next.settings={wordTarget:1234};document.querySelector<HTMLElement>('[data-action="open"]')!.click()});
+  await page.evaluate(()=>{const t=(window as any).__test;t.holdSettings=true;t.nextProject=structuredClone(t.project);t.nextProject.id='another-project';t.nextProject.title='Zweites Projekt';t.nextProject.settings={wordTarget:1234}});await page.locator('#styleWording').click();
+  await expect.poll(()=>page.evaluate(()=>!!(window as any).__test.releaseSettings)).toBe(true);
+  await page.evaluate(()=>document.querySelector<HTMLElement>('[data-action="open"]')!.click());await expect(page.locator('#toast')).toContainText('laufende Aktion');expect(await page.evaluate(()=>(window as any).__test.openCount??0)).toBe(0);
+  await page.evaluate(()=>{const t=(window as any).__test;t.holdSettings=false;t.releaseSettings()});await expect(page.locator('#proofStatus')).toContainText('gespeichert');
+  await page.evaluate(()=>document.querySelector<HTMLElement>('[data-action="open"]')!.click());
   await expect(page.locator('#projectLabel')).toHaveText('Zweites Projekt');await expect(page.locator('.folder-overview')).toBeVisible();await expect(page.locator('#proofRun')).toBeDisabled();
   await page.locator('[data-doc="scene"]').click();await expect(page.locator('#proofRun')).toBeEnabled();
   expect(await page.evaluate(()=>(window as any).__test.project.settings)).toEqual({wordTarget:1234});

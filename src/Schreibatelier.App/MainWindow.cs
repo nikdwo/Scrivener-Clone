@@ -50,7 +50,7 @@ public sealed class MainWindow : Window
         updates = new(new HttpClient { Timeout = Timeout.InfiniteTimeSpan }, dataDirectory,
             typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion,
             File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.txt")));
-        try { preferences = ValidatePreferences(JsonNode.Parse(File.ReadAllText(Path.Combine(dataDirectory, "preferences.json"))) as JsonObject ?? new(), tolerateInvalid: true); }
+        try { preferences = ValidatePreferences(JsonNode.Parse(File.ReadAllText(Path.Combine(dataDirectory, "preferences.json")), documentOptions: new() { AllowDuplicateProperties = false }) as JsonObject ?? new(), tolerateInvalid: true); }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException) { /* Keep the original file; defaults allow project access. */ }
         converter = new(FindTools());
         defaultPandoc = converter.Pandoc; defaultTypst = converter.Typst;
@@ -91,13 +91,18 @@ public sealed class MainWindow : Window
         {
             if (!result.ContainsKey(key)) continue;
             var value = result[key] as JsonValue;
-            var valid = key switch
+            var valid = false;
+            try
             {
-                "pandoc" or "typst" => value is not null && value.TryGetValue<string>(out _),
-                "theme" => value is not null && value.TryGetValue<string>(out var theme) && theme is "light" or "dark",
-                "checkUpdatesAtStartup" => value is not null && value.TryGetValue<bool>(out _),
-                _ => value is not null && value.TryGetValue<double>(out var width) && double.IsFinite(width)
-            };
+                valid = key switch
+                {
+                    "pandoc" or "typst" => value is not null && value.TryGetValue<string>(out _),
+                    "theme" => value is not null && value.TryGetValue<string>(out var theme) && theme is "light" or "dark",
+                    "checkUpdatesAtStartup" => value is not null && value.TryGetValue<bool>(out _),
+                    _ => value is not null && value.TryGetValue<double>(out var width) && double.IsFinite(width)
+                };
+            }
+            catch (InvalidOperationException) { /* A known JSON string can contain an unpaired UTF-16 surrogate. */ }
             if (valid) continue;
             if (!tolerateInvalid) throw new InvalidDataException("Ungültige Einstellung: " + key);
             result.Remove(key);

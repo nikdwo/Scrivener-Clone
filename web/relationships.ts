@@ -3,6 +3,7 @@ import {cardLabels} from './storycards.mjs';
 import {emptyNetwork,liveCards,networkData,arrangeCards,edgePaths,validateEdge} from './relationships.mjs';
 
 type Options={project:()=>any;visible:()=>boolean;openCard:(id:string)=>Promise<void>;show:()=>void;
+  runAction:<T>(work:()=>T|Promise<T>)=>Promise<T>;
   save:(network:any)=>Promise<void>;modal:(title:string,body:string,button?:string)=>Promise<FormData|null>;error:(message:string)=>void};
 export class Relationships {
   private selected='';private neighbors=false;private zoom:number|null=null;private scroll={x:0,y:0};private query='';
@@ -46,7 +47,7 @@ export class Relationships {
     this.editor.innerHTML=`<form id="relationshipForm"><h3>Beziehung bearbeiten</h3>${select('fromId','Von')}${select('toId','Zu')}<div class="field"><label for="relationship-label">Beziehung</label><input id="relationship-label" name="label" maxlength="200" required value="${h(d.label)}" ${disabled?'disabled':''}></div><div class="field"><label for="relationship-direction">Richtung</label><select id="relationship-direction" name="direction" ${disabled?'disabled':''}><option value="directed">Gerichtet →</option><option value="mutual" ${d.direction==='mutual'?'selected':''}>Gegenseitig ↔</option></select></div><div class="field"><label for="relationship-notes">Notizen</label><textarea id="relationship-notes" name="notes" ${disabled?'disabled':''}>${h(d.notes)}</textarea></div><p id="relationshipError" role="alert"></p><div class="story-toolbar"><button type="submit" ${disabled?'disabled':''}>Speichern</button>${this.button('cancel','Abbrechen','',!!this.pending)}${this.network().edges.some((e:any)=>e.id===d.id)?this.button('remove','Beziehung entfernen',d.id,disabled):''}</div></form>`;
     this.editor.querySelector('form')!.addEventListener('input',()=>{for(const [key,value] of new FormData(this.editor.querySelector('form')!))this.draft[key]=String(value)});
     const owner=this.options.project().id;
-    this.editor.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();void this.saveEdge().catch(error=>{if(owner!==this.options.project()?.id)return;this.renderEditor();const message=this.editor.querySelector('#relationshipError');if(message)message.textContent=error.message;this.fail(error)})});this.wire(this.editor);
+    this.editor.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();void this.options.runAction(()=>this.saveEdge()).catch(error=>{if(owner!==this.options.project()?.id)return;this.renderEditor();const message=this.editor.querySelector('#relationshipError');if(message)message.textContent=error.message;this.fail(error)})});this.wire(this.editor);
   }
   private async persist(next:any){
     if(this.options.project().readOnly)throw new Error('Dieses Projekt ist schreibgeschützt.');
@@ -94,7 +95,7 @@ export class Relationships {
   }
   private search(){const list=document.getElementById('networkSearchResults');if(!list)return;const q=this.query.trim().toLocaleLowerCase('de');list.innerHTML=q?this.cards().filter(c=>[c.title,...c.meta.storyCard.aliases].some(s=>s.toLocaleLowerCase('de').includes(q))).slice(0,30).map(c=>this.button('focus',`${c.title} · ${cardLabels[c.meta.storyCard.type]}`,c.id)).join('')||'<p>Keine Karte gefunden.</p>':'';this.wire(list)}
   private async focus(id:string){await this.openCard(id);this.zoom=Math.max(this.zoom??1,.75);this.render();document.querySelector(`[data-network-card="${id}"]`)?.scrollIntoView({block:'center',inline:'center'});document.querySelector<HTMLButtonElement>(`[data-network-card="${id}"] .network-card-open`)?.focus()}
-  private wire(target:HTMLElement){for(const b of target.querySelectorAll<HTMLButtonElement>('[data-network-action]')){if(b.dataset.wired)continue;b.dataset.wired='true';b.addEventListener('click',()=>void this.action(b.dataset.networkAction!,b.dataset.id!).catch(e=>this.fail(e)))}}
+  private wire(target:HTMLElement){for(const b of target.querySelectorAll<HTMLButtonElement>('[data-network-action]')){if(b.dataset.wired)continue;b.dataset.wired='true';b.addEventListener('click',()=>void this.options.runAction(()=>this.action(b.dataset.networkAction!,b.dataset.id!)).catch(e=>this.fail(e)))}}
   private async action(action:string,id:string){
     if(action==='cancel'){this.draft=null;this.renderEditor();return}
     if(action==='remove'){await this.remove(id);return}
@@ -115,12 +116,12 @@ export class Relationships {
     const cancel=()=>{cleanup();if(!this.gesture)return;positions[id]=this.gesture.before;this.layout[id]=this.gesture.before;if(this.gesture.unsaved)this.positions[id]=this.gesture.unsaved;else delete this.positions[id];this.gesture=null;this.render()};
     handle.addEventListener('pointerdown',event=>{if(event.button!==0||!begin())return;event.preventDefault();handle.focus();handle.setPointerCapture(event.pointerId);const start={x:event.clientX,y:event.clientY},before={...positions[id]};
       const motion=(e:PointerEvent)=>move(before.x+(e.clientX-start.x)/(this.zoom??1),before.y+(e.clientY-start.y)/(this.zoom??1));
-      const stop=()=>{cleanup();if(this.gesture)void this.finishMove().catch(e=>this.fail(e))};
+      const stop=()=>{cleanup();if(this.gesture)void this.options.runAction(()=>this.finishMove()).catch(e=>this.fail(e))};
       cleanup=()=>{handle.removeEventListener('pointermove',motion);handle.removeEventListener('pointerup',stop);handle.removeEventListener('pointercancel',cancel);if(handle.hasPointerCapture(event.pointerId))handle.releasePointerCapture(event.pointerId)};
       handle.addEventListener('pointermove',motion);handle.addEventListener('pointerup',stop,{once:true});handle.addEventListener('pointercancel',cancel,{once:true});
     });
-    handle.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();cancel();return}if(e.key==='Enter'&&this.gesture){e.preventDefault();void this.finishMove().catch(error=>this.fail(error));return}const shifts:Record<string,number[]>={ArrowLeft:[-10,0],ArrowRight:[10,0],ArrowUp:[0,-10],ArrowDown:[0,10]};if(shifts[e.key]){e.preventDefault();if(!begin())return;move(positions[id].x+shifts[e.key][0],positions[id].y+shifts[e.key][1])}});
-    handle.addEventListener('blur',()=>{if(this.gesture?.id===id)void this.finishMove().catch(e=>this.fail(e))});
+    handle.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();cancel();return}if(e.key==='Enter'&&this.gesture){e.preventDefault();void this.options.runAction(()=>this.finishMove()).catch(error=>this.fail(error));return}const shifts:Record<string,number[]>={ArrowLeft:[-10,0],ArrowRight:[10,0],ArrowUp:[0,-10],ArrowDown:[0,10]};if(shifts[e.key]){e.preventDefault();if(!begin())return;move(positions[id].x+shifts[e.key][0],positions[id].y+shifts[e.key][1])}});
+    handle.addEventListener('blur',()=>{if(this.gesture?.id===id)void this.options.runAction(()=>this.finishMove()).catch(e=>this.fail(e))});
   }
   private async finishMove(){this.gesture=null;await this.savePositions()}
   private savedPositions(){const positions={...this.network().positions};for(const c of this.cards()){const point=this.positions[c.id]??this.layout[c.id];if(point)positions[c.id]={...point}}return positions}

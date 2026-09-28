@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Xml;
@@ -23,25 +22,28 @@ public sealed class ConversionService(string? toolsRoot = null)
     internal static async Task<string> Run(string? exe, IEnumerable<string> args, string cwd, string? input = null, TimeSpan? timeLimit = null)
     {
         if (exe is null || !File.Exists(exe)) throw new FileNotFoundException("Der benötigte Konverter fehlt. Bitte Pandoc und Typst über scripts/install-tools.ps1 installieren oder in den Einstellungen auswählen.");
-        using var process = new Process { StartInfo = new(exe) { WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 } };
-        foreach (var arg in args) process.StartInfo.ArgumentList.Add(arg);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10)) throw new PlatformNotSupportedException("Externe Konverter benötigen Windows 10 oder neuer.");
         using var timeout = new CancellationTokenSource(timeLimit ?? TimeSpan.FromMinutes(2));
-        process.Start(); var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token); var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+        using var converter = WindowsConverterProcess.Start(exe, args, cwd);
+        var process = converter.Process; var stdout = converter.StandardOutput.ReadToEndAsync(timeout.Token); var stderr = converter.StandardError.ReadToEndAsync(timeout.Token);
         try
         {
-            if (input is not null) { await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token); await process.StandardInput.FlushAsync(timeout.Token); }
-            process.StandardInput.Close();
+            if (input is not null) await converter.StandardInput.WriteAsync(Console.InputEncoding.GetBytes(input), timeout.Token);
+            converter.StandardInput.Close();
             await process.WaitForExitAsync(timeout.Token);
             var output = await stdout; var error = await stderr;
             if (process.ExitCode != 0) throw new InvalidDataException("Konvertierung fehlgeschlagen: " + error[..Math.Min(error.Length, 3000)]);
             return output;
         }
-        catch
+        catch (Exception failure)
         {
-            if (!process.HasExited) { try { process.Kill(true); } catch (InvalidOperationException) { } }
+            var timedOut = timeout.IsCancellationRequested;
+            timeout.Cancel();
+            try { await converter.Terminate(); }
+            catch (Exception cleanupFailure) { throw new AggregateException("Der Konverter konnte nicht vollständig beendet werden.", failure, cleanupFailure); }
             await process.WaitForExitAsync();
             try { await Task.WhenAll(stdout, stderr); } catch (Exception ex) when (ex is OperationCanceledException or IOException) { }
-            if (timeout.IsCancellationRequested) throw new TimeoutException("Die Konvertierung hat das Zeitlimit von zwei Minuten überschritten. Das Projekt wurde nicht verändert.");
+            if (timedOut) throw new TimeoutException("Die Konvertierung hat das Zeitlimit von zwei Minuten überschritten. Das Projekt wurde nicht verändert.", failure);
             throw;
         }
     }

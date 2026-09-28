@@ -2,7 +2,7 @@ import {escapeHtml as h} from './logic.mjs';
 import {isScene,isStoryCard,cardLabels} from './storycards.mjs';
 import {formatPoint,validateTimeline,timelineData,layoutLane,pointRange,minutePoint,editTimeline,timelineScenes} from './timeline.mjs';
 
-type Options={project:()=>any;current:()=>any;selected:()=>string;visible:()=>boolean;changed:(d:any)=>void;
+type Options={project:()=>any;generation:()=>number;runAction:<T>(work:()=>T|Promise<T>)=>Promise<T>;current:()=>any;selected:()=>string;visible:()=>boolean;changed:(d:any)=>void;
   flush:()=>Promise<void>;saveSettings:()=>Promise<void>;select:(id:string)=>Promise<void>;openText:(id:string)=>Promise<void>;
   getDoc:(id:string)=>Promise<any>;modal:(title:string,body:string,button?:string)=>Promise<FormData|null>;error:(message:string)=>void;inspector:()=>void};
 export class Timeline {
@@ -53,14 +53,14 @@ export class Timeline {
     for(const button of target.querySelectorAll<HTMLButtonElement>('[data-timeline-action]'))button.addEventListener('click',()=>{
       if(this.suppressClick)return;
       const action=button.dataset.timelineAction!,id=button.dataset.id!;
-      void(async()=>{
+      void this.options.runAction(async()=>{
         if(action==='setup')await this.setup();
         else if(action==='select')await this.options.select(id);
         else if(action==='text')await this.options.openText(id);
         else if(['newStrand','renameStrand','deleteStrand'].includes(action))await this.strand(action,id);
         else if(action==='manage')await this.manage();
         else {this.cancelDrag();this.remember();if(action==='fit')this.extent=null;const previous=this.zoom;this.zoom=action==='fit'?1:Math.max(1,Math.min(64,this.zoom*(action==='in'?2:.5)));this.scroll=action==='fit'?0:this.scroll*this.zoom/previous;this.render(false)}
-      })().catch(e=>this.options.error(e.message));
+      }).catch(e=>this.options.error(e.message));
     });
   }
   private async manage(){
@@ -69,7 +69,7 @@ export class Timeline {
     // Close the shared dialog before opening its next form.
     document.getElementById('timelineStrands')!.querySelectorAll<HTMLButtonElement>('[data-timeline-action]').forEach(button=>button.addEventListener('click',()=>{
       const dialog=document.getElementById('dialog') as HTMLDialogElement;
-      dialog.addEventListener('close',()=>{if(this.options.project()?.id===p.id)void this.strand(button.dataset.timelineAction!,button.dataset.id!).catch(e=>this.options.error(e.message))},{once:true});dialog.close('cancel');
+      dialog.addEventListener('close',()=>void this.options.runAction(()=>this.strand(button.dataset.timelineAction!,button.dataset.id!)).catch(e=>this.options.error(e.message)),{once:true});dialog.close('cancel');
     }));await promise;
   }
   render(remember=true){
@@ -118,7 +118,7 @@ export class Timeline {
     const value=structuredClone(scene.meta.timeline??{}),mode=value.start?handle.dataset.timelineDrag!:'place';
     const point=value.start?pointRange(value[mode==='end'?'end':'start']??value.start,p.settings.timeline.basis):null,baseMinute=point?(mode==='end'?point.high:point.low):this.geometry.low;
     const anchor=this.minuteAt(x);
-    this.gesture={p,id,value,mode,handle,x,y,originX:x,originY:y,anchor,lastX:x,lastMinute:anchor,delta:0,baseMinute,minute:baseMinute,
+    this.gesture={p,owner:this.options.generation(),id,value,mode,handle,x,y,originX:x,originY:y,anchor,lastX:x,lastMinute:anchor,delta:0,baseMinute,minute:baseMinute,
       strand:value.strandId??'none',order:timelineScenes(p.documents).findIndex((d:any)=>d.id===id),keyboard,started:keyboard,next:null};
     if(keyboard)this.previewDrag();return true;
   }
@@ -191,14 +191,14 @@ export class Timeline {
     const g=this.gesture;if(!g)return;const next=g.next,started=g.started;this.cancelDrag();
     if(!started)return;if(!next){this.render();return}
     try{
-      if(this.options.project()!==g.p||g.p.readOnly)return;
-      await this.options.flush();if(this.options.project()!==g.p)return;
-      const d=await this.options.getDoc(g.id);if(this.options.project()!==g.p)return;
+      if(this.options.generation()!==g.owner||g.p.readOnly)return;
+      await this.options.flush();if(this.options.generation()!==g.owner)return;
+      const d=await this.options.getDoc(g.id);if(this.options.generation()!==g.owner)return;
       if(d.deleted||JSON.stringify(d.meta.timeline??{})!==JSON.stringify(g.value))throw new Error('Die Szenenzeiten wurden inzwischen geändert. Bitte erneut ziehen.');
       if(JSON.stringify(next)!==JSON.stringify(g.value)){d.meta.timeline=next;this.options.changed(d);this.options.inspector();await this.options.flush()}
       this.options.inspector();
     }catch(e:any){this.options.error(e.message)}
-    finally{if(this.options.project()===g.p&&this.options.visible())this.render()}
+    finally{if(this.options.generation()===g.owner&&this.options.visible())this.render()}
   }
   private wireDragging(target:HTMLElement){
     const root=target.querySelector<HTMLElement>('#timelineView')!;
@@ -207,7 +207,7 @@ export class Timeline {
       try{if(this.beginDrag(handle,event.clientX,event.clientY)){handle.setPointerCapture(event.pointerId);handle.focus({preventScroll:true});event.preventDefault()}}catch(e:any){this.options.error(e.message)}
     });
     root.addEventListener('pointermove',event=>this.pointerDrag(event.clientX,event.clientY,event.shiftKey));
-    root.addEventListener('pointerup',()=>{void this.finishDrag()});
+    root.addEventListener('pointerup',()=>{void this.options.runAction(()=>this.finishDrag()).catch(e=>this.options.error(e.message))});
     root.addEventListener('pointercancel',()=>{this.cancelDrag();this.render()});
     root.addEventListener('lostpointercapture',()=>{if(this.gesture&&!this.gesture.keyboard){this.cancelDrag();this.render()}});
     root.addEventListener('keydown',event=>{
@@ -216,7 +216,7 @@ export class Timeline {
       if(!handle)return;
       if(event.key===' '&&!this.gesture){event.preventDefault();const r=handle.getBoundingClientRect();try{this.beginDrag(handle,r.left,r.bottom,true)}catch(e:any){this.options.error(e.message)}return}
       const g=this.gesture;if(!g?.keyboard)return;
-      if(event.key==='Enter'||event.key===' '){event.preventDefault();void this.finishDrag();return}
+      if(event.key==='Enter'||event.key===' '){event.preventDefault();void this.options.runAction(()=>this.finishDrag()).catch(e=>this.options.error(e.message));return}
       if(event.key==='Tab'){this.cancelDrag();return}
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;event.preventDefault();
       if(event.key==='ArrowLeft'||event.key==='ArrowRight'){

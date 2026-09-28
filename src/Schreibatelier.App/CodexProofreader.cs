@@ -43,7 +43,16 @@ public sealed class CodexProofreader(string directory) : IDisposable
             if (connection is { } current)
             {
                 if (Volatile.Read(ref current.Stopped) == 0 && !current.Process.HasExited && !current.Reader.IsCompleted) return current;
-                Stop(current); await current.Reader; await current.Process.WaitForExitAsync(); current.Process.Dispose(); connection = null;
+                try { Stop(current); await current.Reader; }
+                finally
+                {
+                    try { await current.Process.WaitForExitAsync(); }
+                    finally
+                    {
+                        try { current.Process.Dispose(); }
+                        finally { if (ReferenceEquals(connection, current)) connection = null; }
+                    }
+                }
             }
             var executable = processStart is null ? FindExecutable() ?? throw new FileNotFoundException("Codex CLI fehlt. Bitte die offizielle Codex CLI installieren und anschließend erneut verbinden.") : "";
             Directory.CreateDirectory(directory);
@@ -83,7 +92,7 @@ public sealed class CodexProofreader(string directory) : IDisposable
             while (await owner.Process.StandardOutput.ReadLineAsync() is { } line)
             {
                 if (line.Length > 4_000_000) throw new InvalidDataException("Codex-Antwort zu groß.");
-                var message = JsonNode.Parse(line)?.AsObject(); if (message is null) continue;
+                var message = JsonNode.Parse(line, documentOptions: new() { AllowDuplicateProperties = false })?.AsObject(); if (message is null) continue;
                 if (message["method"] is null && message["id"] is JsonValue value && value.TryGetValue<int>(out var id) && owner.Requests.ContainsKey(id))
                 {
                     var error = message["error"] is null ? null : new IOException("Codex: " + Text(message["error"]?["message"]));

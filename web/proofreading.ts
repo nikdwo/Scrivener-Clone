@@ -11,7 +11,7 @@ import {isStoryCard} from './storycards.mjs';
 const key=new PluginKey('proofreading');
 const categories:Record<string,string>={spelling:'Rechtschreibung',grammar:'Grammatik',punctuation:'Zeichensetzung',style:'Stil'};
 const excerpt=(text:string)=>text.length>180?text.slice(0,180).replace(/[\uD800-\uDBFF]$/u,'')+'…':text;
-type Options={rpc:(action:string,args?:any)=>Promise<any>,project:()=>any,editor:()=>Editor|null,saveSettings:()=>Promise<void>,modal:(title:string,body:string,button?:string)=>Promise<FormData|null>};
+type Options={rpc:(action:string,args?:any)=>Promise<any>,project:()=>any,editor:()=>Editor|null,saveSettings:()=>Promise<void>,modal:(title:string,body:string,button?:string)=>Promise<FormData|null>,runAction:<T>(work:()=>T|Promise<T>)=>Promise<T>};
 type Finding={issue:any,from:number,to:number,id:number};
 
 export class Proofreading {
@@ -48,13 +48,13 @@ export class Proofreading {
     this.el('proofEngine').addEventListener('change',()=>{if(this.running&&this.engine!=='style')void this.options.rpc('proofCancel').catch(()=>{});this.engine=this.input('proofEngine').value;this.invalidate();this.status('Bereit.');this.refreshControls();void this.loadStatus()});
     this.el('proofModel').addEventListener('change',()=>{this.model=this.input('proofModel').value;this.invalidate()});
     this.el('proofStyle').addEventListener('change',()=>{this.style=this.input('proofStyle').checked;this.invalidate()});
-    this.el('proofAuto').addEventListener('change',()=>{if(this.engine==='style'){void this.saveStyleSetting('automatic',this.input('proofAuto').checked);return}this.automatic=this.input('proofAuto').checked;this.changed(this.options.editor())});
-    this.el('styleOptions').addEventListener('change',event=>{const input=event.target as HTMLInputElement;if(input.dataset.styleSetting)void this.saveStyleSetting(input.dataset.styleSetting,input.checked)});
-    this.el('proofLanguage').addEventListener('change',()=>void this.changeLanguage());
-    this.el('proofSaveWords').addEventListener('click',()=>void this.saveWords().catch(e=>this.status(e.message,true)));
+    this.el('proofAuto').addEventListener('change',()=>{if(this.engine==='style'){void this.options.runAction(()=>this.saveStyleSetting('automatic',this.input('proofAuto').checked)).catch(e=>this.status(e.message,true));return}this.automatic=this.input('proofAuto').checked;this.changed(this.options.editor())});
+    this.el('styleOptions').addEventListener('change',event=>{const input=event.target as HTMLInputElement;if(input.dataset.styleSetting)void this.options.runAction(()=>this.saveStyleSetting(input.dataset.styleSetting!,input.checked)).catch(e=>this.status(e.message,true))});
+    this.el('proofLanguage').addEventListener('change',()=>void this.options.runAction(()=>this.changeLanguage()).catch(e=>this.status(e.message,true)));
+    this.el('proofSaveWords').addEventListener('click',()=>void this.options.runAction(()=>this.saveWords()).catch(e=>this.status(e.message,true)));
     this.panel.addEventListener('pointerenter',()=>this.refreshControls());
     this.panel.addEventListener('focusin',()=>this.refreshControls());
-    this.panel.addEventListener('click',event=>{const el=(event.target as HTMLElement).closest<HTMLElement>('[data-proof-action]');if(el)void this.action(el.dataset.proofAction!,Number(el.dataset.id),Number(el.dataset.replacement)).catch(e=>this.status(e.message,true))});
+    this.panel.addEventListener('click',event=>{const el=(event.target as HTMLElement).closest<HTMLElement>('[data-proof-action]');if(el){const action=el.dataset.proofAction!,work=()=>this.action(action,Number(el.dataset.id),Number(el.dataset.replacement));void (action==='allow'?this.options.runAction(work):work()).catch(e=>this.status(e.message,true))}});
   }
   private el(id:string){return document.getElementById(id)!}
   private input(id:string){return this.el(id) as HTMLInputElement}

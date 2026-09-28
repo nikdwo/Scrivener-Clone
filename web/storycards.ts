@@ -10,6 +10,7 @@ type Options = {
   rpc:(action:string,args?:any)=>Promise<any>; modal:(title:string,body:string,button?:string)=>Promise<FormData|null>;
   show:()=>void; select:(id:string)=>Promise<void>; trash:(id:string)=>Promise<void>; error:(message:string)=>void; saveSettings:()=>Promise<void>;
   beforeLeave:()=>Promise<void>;mountRelationships:(target:HTMLElement,id:string)=>void;
+  runAction:<T>(work:()=>T|Promise<T>)=>Promise<T>;
 };
 type Hit = {from:number;to:number;name:string;ids:string[]};
 const key = new PluginKey('storyCards');
@@ -29,7 +30,7 @@ export class StoryCards {
   constructor(private options:Options) {
     this.panel.addEventListener('click', event => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-story-action]');
-      if (button) void this.action(button.dataset.storyAction!, button.dataset.id ?? '').catch(e=>this.options.error(e.message));
+      if (button) void this.options.runAction(()=>this.action(button.dataset.storyAction!, button.dataset.id ?? '')).catch(e=>this.options.error(e.message));
     });
   }
   private cards() { return (this.options.project()?.documents ?? []).filter((d:any)=>isStoryCard(d)&&!d.deleted); }
@@ -80,7 +81,7 @@ export class StoryCards {
     })]});
   }
   openChoices(ids:string[]) {
-    void this.choose(ids).catch(e=>this.options.error(e.message));
+    void this.options.runAction(()=>this.choose(ids)).catch(e=>this.options.error(e.message));
   }
   private async choose(ids:string[]) {
     await this.options.beforeLeave();
@@ -89,7 +90,7 @@ export class StoryCards {
     this.openId=live.length===1?live[0]:null;this.choices=live.length>1?live:[];this.reveal=true;this.options.show();
   }
   async open(id:string) { await this.options.beforeLeave();this.openId=id;this.choices=[];this.reveal=true;this.options.show(); }
-  show() { void this.render().catch(e=>this.options.error(e.message)); }
+  show() { const request=this.request+1;void this.render().catch(e=>{if(request===this.request)this.options.error(e.message)}); }
   private async render() {
     const p=this.options.project();if(!p)return;
     if(this.projectId&&this.projectId!==p.id)this.reset();this.projectId=p.id;
@@ -112,7 +113,7 @@ export class StoryCards {
     }).join('')||'<p class="muted">Noch keine Karten zugeordnet.</p>':'<p class="muted">Öffne einen Textabschnitt im Manuskript, um Karten zuzuordnen.</p>';
     this.panel.querySelector<HTMLInputElement>('#storySearch')!.addEventListener('input',e=>{this.query=(e.target as HTMLInputElement).value;this.renderList()});
     this.panel.querySelector<HTMLSelectElement>('#storyFilter')!.addEventListener('change',e=>{this.filter=(e.target as HTMLSelectElement).value;this.renderList()});
-    this.panel.querySelector('#storyRecognition')!.addEventListener('change',()=>void this.toggleRecognition().catch(e=>this.options.error(e.message)));
+    this.panel.querySelector('#storyRecognition')!.addEventListener('change',()=>void this.options.runAction(()=>this.toggleRecognition()).catch(e=>this.options.error(e.message)));
     if(card){this.bindFields(card);this.options.mountRelationships(this.panel.querySelector('#storyRelationships')!,card.id)}
     this.renderList();this.renderMatches();
     if(this.reveal){this.panel.querySelector(this.choices.length?'#storyChoices':'#storyDetail')?.scrollIntoView({block:'start'});this.reveal=false}

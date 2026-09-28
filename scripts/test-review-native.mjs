@@ -63,12 +63,18 @@ async function run(label,inspect) {
   }
 }
 
-for(const invalid of ['null','[]','42','{"pandoc":42,"typst":false,"theme":{},"inspectorWidth":"wide","checkUpdatesAtStartup":1,"future":{"keep":true}}','{broken']) {
+for(const [invalid,expected] of [
+  ['null',{}],['[]',{}],['42',{}],['{broken',{}],
+  ['{"pandoc":42,"typst":false,"theme":{},"inspectorWidth":"wide","checkUpdatesAtStartup":1,"future":{"keep":true}}',{future:{keep:true}}],
+  ['{"theme":"dark","theme":"light","future":{"keep":true}}',{}],
+  ['{"theme":"dark","future":{"keep":true,"keep":false}}',{}],
+  ['{"pandoc":"\\ud800","typst":"\\udc00","theme":"dark","inspectorWidth":320,"checkUpdatesAtStartup":false,"future":{"keep":"\\ud83d\\ude00"}}',{theme:'dark',inspectorWidth:320,checkUpdatesAtStartup:false,future:{keep:'😀'}}],
+  ['{"theme":"\\ud800","pandoc":"","typst":"","future":{"keep":true}}',{pandoc:'',typst:'',future:{keep:true}}],
+]) {
   await writeFile(prefsFile,invalid);
   await run('Startup tolerates preferences '+invalid,async page=>{
     expect((await bridge(page,'state')).filePath).toBe(fixture.a);
-    const ready=await bridge(page,'ready');expect(ready.preferences.pandoc).toBeUndefined();
-    if(invalid.includes('future'))expect(ready.preferences.future).toEqual({keep:true});
+    const ready=await bridge(page,'ready');expect(ready.preferences).toEqual(expected);
     expect(await readFile(prefsFile,'utf8')).toBe(invalid);
   });
 }
@@ -96,8 +102,12 @@ await run('Failed project switch preserves the active store; settings commit ato
   const preferences={theme:'dark',inspectorWidth:320,checkUpdatesAtStartup:false,future:{keep:true},pandoc:'',typst:''};
   await bridge(page,'preferences',preferences);
   expect(JSON.parse(await readFile(prefsFile,'utf8'))).toEqual(preferences);
-  await expect(bridge(page,'preferences',{...preferences,pandoc:17})).rejects.toThrow();
-  expect((await bridge(page,'ready')).preferences).toEqual(preferences);
+  const savedTools=(await bridge(page,'ready')).tools;
+  for(const invalid of [{pandoc:17},{pandoc:'\ud800'},{typst:'\udc00'},{theme:'\ud800'}]) {
+    await expect(bridge(page,'preferences',{...preferences,...invalid})).rejects.toThrow();
+    const ready=await bridge(page,'ready');expect(ready.preferences).toEqual(preferences);expect(ready.tools).toEqual(savedTools);
+    expect(JSON.parse(await readFile(prefsFile,'utf8'))).toEqual(preferences);
+  }
   const readyFile=path.join(directory,'preferences-lock.ready');
   const holder=spawn(checks,['--native-review-lock-file',prefsFile,readyFile],{cwd:root,windowsHide:true,stdio:['pipe','ignore','pipe']});
   const holderStatus=watch(holder);let holderError='';holder.stderr.on('data',data=>holderError+=data);

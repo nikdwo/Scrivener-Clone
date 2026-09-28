@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
@@ -16,16 +17,73 @@ static class CoreReviewChecks
     public static async Task RunChild(string[] args)
     {
         File.WriteAllText(args[2], Environment.ProcessId.ToString());
-        if (args[1] == "echo") { Console.Write(await Console.In.ReadToEndAsync()); return; }
+        if (args[1] == "echo")
+        {
+            // The converter reads the caller's stdin codepage and emits UTF-8, independently of its own console.
+            var codepage = int.Parse(args[3]);
+            using var reader = new StreamReader(Console.OpenStandardInput(), CodePagesEncodingProvider.Instance.GetEncoding(codepage) ?? Encoding.GetEncoding(codepage));
+            Console.OutputEncoding = new UTF8Encoding(false);
+            Console.Write(await reader.ReadToEndAsync()); return;
+        }
         if (args[1] == "exit") { Console.Error.Write("Test converter failed"); Environment.ExitCode = 7; return; }
-        if (args[1] == "tree")
+        if (args[1] == "arguments") { Console.Write(JsonSerializer.Serialize(args[3..])); return; }
+        if (args[1] == "stdin-bytes")
+        {
+            using var bytes = new MemoryStream(); await Console.OpenStandardInput().CopyToAsync(bytes);
+            Console.Write(Convert.ToHexString(bytes.ToArray())); return;
+        }
+        if (args[1] == "encoding-compare")
+        {
+            var value = "Grüße – 🖋️"; var directory = Path.GetDirectoryName(args[2])!;
+            var baseline = await LegacyOutput(directory, args[2] + ".baseline", value);
+            var actual = await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "stdin-bytes", args[2] + ".native"], directory, value, TimeSpan.FromSeconds(10));
+            Console.Write(actual == baseline ? "same" : $"different: {baseline} / {actual}"); return;
+        }
+        if (args[1] == "large-output")
+        {
+            Console.OutputEncoding = new UTF8Encoding(false);
+            await Task.WhenAll(Console.Out.WriteAsync(new string('ä', 100_000)), Console.Error.WriteAsync(new string('ö', 100_000))); return;
+        }
+        if (args[1] == "gate-echo")
+        {
+            var input = await Console.In.ReadToEndAsync(); await WaitForFile(args[2] + ".release"); Console.Write(input); return;
+        }
+        if (args[1] is "tree" or "tree-exit")
         {
             var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
             foreach (var arg in new[] { "--converter-review-child", "block", args[2] + ".child" }) start.ArgumentList.Add(arg);
             using var child = Process.Start(start)!;
+            await WaitForFile(args[2] + ".child");
+            if (args[1] == "tree-exit") return;
             await Task.Delay(Timeout.Infinite);
         }
         await Task.Delay(Timeout.Infinite);
+    }
+
+    private static async Task WaitForFile(string path)
+    {
+        var watch = Stopwatch.StartNew();
+        while (!File.Exists(path))
+        {
+            if (watch.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("Converter fixture did not become ready: " + path);
+            await Task.Delay(10);
+        }
+    }
+
+    private static async Task<string> LegacyOutput(string root, string pid, string input, string mode = "stdin-bytes")
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardInput = true, RedirectStandardOutput = true, StandardOutputEncoding = Encoding.UTF8 };
+        foreach (var arg in new[] { "--converter-review-child", mode, pid }) start.ArgumentList.Add(arg);
+        if (mode == "echo") start.ArgumentList.Add(Console.InputEncoding.CodePage.ToString());
+        using var process = Process.Start(start)!;
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync();
+            await process.StandardInput.WriteAsync(input); await process.StandardInput.FlushAsync(); process.StandardInput.Close();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            return await output;
+        }
+        finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); } }
     }
 
     public static async Task Run(string root, string workspace)
@@ -125,8 +183,41 @@ static class CoreReviewChecks
             }
         }
 
+        await RunConverterProcesses(root);
+        Console.WriteLine($"{passed} core review checks passed.");
+    }
+
+    public static async Task RunConverterProcesses(string root)
+    {
+        var passed = 0;
+        void Check(bool ok, string label) { if (!ok) throw new Exception("FAILED: " + label); passed++; Console.WriteLine("PASS " + label); }
+        async Task ThrowsAsync<T>(Func<Task> action, string label) where T : Exception
+        {
+            try { await action(); } catch (T) { Check(true, label); return; }
+            throw new Exception("FAILED (no exception): " + label);
+        }
+        static Process? OpenFixture(string file)
+        {
+            if (!File.Exists(file)) return null;
+            try { return Process.GetProcessById(int.Parse(File.ReadAllText(file))); } catch (ArgumentException) { return null; }
+        }
+
         var normalPid = Path.Combine(root, "converter-normal.pid");
-        Check(await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "echo", normalPid], root, "Grüße", TimeSpan.FromSeconds(10)) == "Grüße", "Converter reads stdin and drains stdout normally");
+        Check(await LegacyOutput(root, normalPid, "Grüße", "echo") == "Grüße", "Echo fixture decodes the declared stdin encoding and emits UTF-8 with existing Process.Start");
+        Check(await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "echo", normalPid, Console.InputEncoding.CodePage.ToString()], root, "Grüße", TimeSpan.FromSeconds(10)) == "Grüße", "Converter reads stdin and drains stdout normally");
+        var argumentPid = Path.Combine(root, "converter-arguments.pid");
+        string[] arguments = ["", "two words", "Grüße", "a\"b", "a\\\"b", "a\\\\\"b", "C:\\path with spaces\\", "\\", "\"", "line\tbreak"];
+        var echoedArguments = await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "arguments", argumentPid, .. arguments], root, timeLimit: TimeSpan.FromSeconds(10));
+        Check(JsonSerializer.Deserialize<string[]>(echoedArguments)!.SequenceEqual(arguments), "Converter preserves empty, quoted, Unicode and trailing-backslash arguments");
+        var encodingPid = Path.Combine(root, "converter-encoding.pid"); var input = "Grüße – 🖋️";
+        var baseline = await LegacyOutput(root, encodingPid, input);
+        var encoded = await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "stdin-bytes", encodingPid], root, input, TimeSpan.FromSeconds(10));
+        Check(encoded == baseline, "Converter preserves the existing stdin encoding and BOM behavior");
+        Check(await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "encoding-compare", encodingPid], root, timeLimit: TimeSpan.FromSeconds(10)) == "same", "Converter preserves stdin encoding without an attached console");
+        Check(await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "large-output", normalPid], root, timeLimit: TimeSpan.FromSeconds(10)) == new string('ä', 100_000), "Converter drains large UTF-8 stdout and stderr concurrently");
+        await ThrowsAsync<ArgumentException>(() => ConversionService.Run(Environment.ProcessPath!, ["invalid\0argument"], root), "Converter rejects an embedded null before native launch");
+        await ThrowsAsync<System.ComponentModel.Win32Exception>(() => ConversionService.Run(Environment.ProcessPath!, [], Path.Combine(root, "missing-directory")), "Invalid working directory fails without starting a converter");
+        Check(await ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "echo", normalPid, Console.InputEncoding.CodePage.ToString()], root, "after failure", TimeSpan.FromSeconds(10)) == "after failure", "Converter starts successfully after native launch failures");
         var failedPid = Path.Combine(root, "converter-failed.pid");
         await ThrowsAsync<InvalidDataException>(() => ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "exit", failedPid], root, timeLimit: TimeSpan.FromSeconds(10)), "Converter early exit reports failure without hanging");
         await ThrowsAsync<IOException>(() => ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "exit", failedPid], root, new string('x', 4_000_000), TimeSpan.FromSeconds(10)), "Converter exiting during stdin reports failure without hanging");
@@ -140,6 +231,32 @@ static class CoreReviewChecks
             try { using var process = Process.GetProcessById(int.Parse(File.ReadAllText(file))); alive = !process.HasExited; } catch (ArgumentException) { }
             Check(!alive, "Timed-out converter process is stopped: " + Path.GetFileName(file));
         }
-        Console.WriteLine($"{passed} core review checks passed.");
+        var orphanPid = Path.Combine(root, "converter-exited-parent.pid");
+        var parallelPid = Path.Combine(root, "converter-parallel.pid");
+        var parallel = ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "gate-echo", parallelPid], root, "parallel survives", TimeSpan.FromSeconds(10));
+        try
+        {
+            await WaitForFile(parallelPid);
+            watch.Restart();
+            await ThrowsAsync<TimeoutException>(() => ConversionService.Run(Environment.ProcessPath!, ["--converter-review-child", "tree-exit", orphanPid], root, timeLimit: TimeSpan.FromSeconds(1)).WaitAsync(TimeSpan.FromSeconds(6)), "Converter timeout covers inherited pipes after the direct process exits");
+            Check(watch.Elapsed < TimeSpan.FromSeconds(5), "Inherited pipes respect the conversion deadline");
+            using (var direct = OpenFixture(orphanPid)) Check(direct is null || direct.HasExited, "Inherited-pipe fixture exited its direct converter before timeout");
+            using (var survivor = OpenFixture(parallelPid)) Check(survivor is not null && !survivor.HasExited, "Timing out one conversion leaves another conversion running");
+            File.WriteAllText(parallelPid + ".release", "release");
+            Check(await parallel == "parallel survives", "Parallel conversion completes after its neighbor times out");
+            Check(File.Exists(orphanPid + ".child"), "Inherited-pipe fixture started its child before its parent exited");
+            using var orphan = OpenFixture(orphanPid + ".child");
+            Check(orphan is null || orphan.HasExited, "Timeout stops inherited-pipe child before returning even after the direct converter exited");
+        }
+        finally
+        {
+            foreach (var file in new[] { orphanPid, orphanPid + ".child", parallelPid })
+            {
+                using var fixture = OpenFixture(file);
+                if (fixture is not null && !fixture.HasExited) { fixture.Kill(true); await fixture.WaitForExitAsync(); }
+            }
+            try { await parallel; } catch (Exception ex) when (ex is IOException or InvalidDataException or TimeoutException) { }
+        }
+        Console.WriteLine($"{passed} converter process checks passed.");
     }
 }
