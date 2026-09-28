@@ -4,6 +4,10 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
 
+if (args.Length > 0 && args[0].StartsWith("--native-review-", StringComparison.Ordinal)) { await NativeReviewFixtures.Run(args); return; }
+if (args.FirstOrDefault() == "--converter-review-child") { await CoreReviewChecks.RunChild(args); return; }
+if (args.Contains("--sandbox") && args.Any(arg => arg.StartsWith("--extract-media=", StringComparison.Ordinal))) { CoreReviewChecks.ImportCleanupChild(args); return; }
+
 if (args.FirstOrDefault() == "--crash-writer")
 {
     using var childStore = new ProjectStore(args[1]);
@@ -16,6 +20,11 @@ if (args.FirstOrDefault() == "--crash-writer")
 var workspace = args.FirstOrDefault() ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
 if (args.Contains("--updates")) { await UpdateChecks.Run(workspace, args.Contains("--live")); return; }
 var root = Path.Combine(workspace, ".work", "checks", Model.Id()); Directory.CreateDirectory(root);
+if (!args.Any(arg => arg.StartsWith("--", StringComparison.Ordinal)) || args.Contains("--core-review"))
+{
+    AssetChecks.Run(root); await CoreReviewChecks.Run(root, workspace);
+    if (args.Contains("--core-review")) return;
+}
 RelationshipChecks.Run(root);
 if(args.Contains("--relationships"))return;
 if (args.Contains("--timeline")) { await TimelineChecks.Run(root); return; }
@@ -92,9 +101,9 @@ using (var store = ProjectStore.Create(path, "Prüfmanuskript", Path.Combine(roo
         Check(new FileInfo(output).Length > 20, format + " export created");
         if (format is "docx" or "rtf" or "odt" or "html" or "md")
         {
-            var imported = await converter.Import(output, store);
-            Check(Model.PlainText(imported.Body).Contains("Grüße aus dem Schreibatelier"), format + " text round-trip");
-            if (format is "docx" or "odt" or "md") Check(JsonNode.Parse(imported.Body)!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }).Contains("Diese Fußnote muss erhalten bleiben"), format + " footnote round-trip");
+            var imported = await converter.Import(output, store, "research");
+            Check(Model.PlainText(imported.Document.Body!).Contains("Grüße aus dem Schreibatelier"), format + " text round-trip");
+            if (format is "docx" or "odt" or "md") Check(JsonNode.Parse(imported.Document.Body!)!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }).Contains("Diese Fußnote muss erhalten bleiben"), format + " footnote round-trip");
         }
     }
     Check(store.Search("Grüße").Count > 0, "Project search includes text");
@@ -134,7 +143,15 @@ using (var store = ProjectStore.Create(path, "Prüfmanuskript", Path.Combine(roo
         if (format == "html") Check(File.ReadAllText(imageOutput).Contains("data:image/png;base64,"), "HTML embeds images independently of temporary directory");
         else if (format is "md" or "latex") { var value = File.ReadAllText(imageOutput); var match = System.Text.RegularExpressions.Regex.Match(value, "Schreibatelier-assets-[a-f0-9]+/[^)}\\s]+\\.png"); Check(match.Success && File.Exists(Path.Combine(root, match.Value)), format + " image survives temporary-directory cleanup"); }
         else Check(new FileInfo(imageOutput).Length > 50, format + " image export");
-        if (format is "docx" or "odt") { var imported = await converter.Import(imageOutput, store); Check(imported.Body.Contains("assets.schreibatelier.local"), format + " image round-trip"); }
+        if (format is "docx" or "odt") { var imported = await converter.Import(imageOutput, store, "research"); Check(imported.Document.Body!.Contains("assets.schreibatelier.local"), format + " image round-trip"); }
+    }
+    var missingImage = store.AddDocument("manuscript", "Fehlendes Bild", body: imageDoc.Body!.Replace(imageAsset.Id, Model.Id(), StringComparison.Ordinal));
+    foreach (var format in new[] { "html", "md", "latex", "docx", "odt", "pdf", "epub" })
+    {
+        var destination = Path.Combine(root, "image." + format); var original = File.ReadAllBytes(destination);
+        var assetsBefore = Directory.GetDirectories(root, "Schreibatelier-assets-*").SelectMany(Directory.GetFiles).ToDictionary(file => file, File.ReadAllBytes);
+        try { await converter.Export(store, new(format, "Bild", "", [missingImage.Id]), destination); throw new Exception("Expected missing image refusal"); }
+        catch (FileNotFoundException) { Check(File.ReadAllBytes(destination).SequenceEqual(original) && assetsBefore.All(asset => File.ReadAllBytes(asset.Key).SequenceEqual(asset.Value)), format + " missing image preserves the existing export and asset files"); }
     }
     var fountain = "Title: Ein Film\n\nINT. HAUS - TAG\n\n@Mara\n(leise)\nHallo.  \n\n@Tom ^\nJa.\n\n# Abschnitt\n= Zusammenfassung\n/* private Notiz\nbleibt erhalten */\n\n> MITTE <\n~ Liedzeile\n\n";
     Check(FountainCodec.Write(FountainCodec.Read(fountain)) == fountain, "Fountain preserves dual-dialogue markers, notes, spaces and blank lines");

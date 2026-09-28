@@ -17,6 +17,8 @@ public sealed class GitHubUpdates(HttpClient http, string directory, string curr
     private CancellationTokenSource? operation;
     private UpdateRelease? available;
     private string? downloaded;
+    private FileStream? downloadLease;
+    private string downloadState = "";
     public string CurrentVersion => currentVersion;
     public bool Portable => portable;
 
@@ -85,7 +87,7 @@ public sealed class GitHubUpdates(HttpClient http, string directory, string curr
 
     public Task<UpdateRelease?> Check() => Run(TimeSpan.FromSeconds(30), async token =>
     {
-        available = null; downloaded = null;
+        available = null; ReleaseDownload(); CleanupDownloads();
         UpdateRelease? latest = null;
         // Scan all pages rather than /latest, which excludes Alpha/Beta releases.
         for (var page = 1; page <= 100; page++)
@@ -106,11 +108,16 @@ public sealed class GitHubUpdates(HttpClient http, string directory, string curr
     public Task<string> Download(Action<int> progress) => Run(TimeSpan.FromMinutes(30), async token =>
     {
         var release = available ?? throw new InvalidOperationException("Bitte zuerst nach Updates suchen.");
-        downloaded = null;
-        var folder = Path.Combine(directory, "Updates", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
+        ReleaseDownload(); CleanupDownloads();
+        var root = Path.GetFullPath(Path.Combine(directory, "Updates")); Directory.CreateDirectory(root);
+        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) throw new IOException("Der Updateordner darf keine Verzeichnisverknüpfung sein.");
+        var folder = Path.Combine(root, Guid.NewGuid().ToString("N"));
+        var leasePath = folder + ".lease";
+        downloadLease = new FileStream(leasePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         var target = Path.Combine(folder, release.FileName); var partial = target + ".partial";
         try
         {
+            SetDownloadState("downloading"); Directory.CreateDirectory(folder);
             using var request = Request(release.DownloadUrl);
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
             response.EnsureSuccessStatusCode();
@@ -130,10 +137,83 @@ public sealed class GitHubUpdates(HttpClient http, string directory, string curr
                 if (total != release.Size || !Convert.ToHexString(hash.GetHashAndReset()).Equals(release.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Die SHA-256-Prüfung ist fehlgeschlagen. Das Update wird nicht geöffnet; bitte erneut herunterladen.");
             }
-            File.Move(partial, target); downloaded = target; return target;
+            File.Move(partial, target); SetDownloadState("complete"); downloaded = target; return target;
         }
-        finally { if (File.Exists(partial)) File.Delete(partial); }
+        finally
+        {
+            if (downloaded is null)
+            {
+                // The directory belongs to this failed operation, never another selected download.
+                try { DeleteDownloadFolder(folder); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                ReleaseDownload();
+                try { if (!Directory.Exists(folder)) File.Delete(leasePath); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+        }
     });
+
+    private void ReleaseDownload() { downloaded = null; downloadLease?.Dispose(); downloadLease = null; downloadState = ""; }
+    private void SetDownloadState(string state)
+    {
+        var lease = downloadLease ?? throw new IOException("Der Updatevorgang wurde beendet.");
+        var bytes = System.Text.Encoding.UTF8.GetBytes(state);
+        lease.Position = 0; lease.Write(bytes); lease.SetLength(bytes.Length); lease.Flush(true); downloadState = state;
+    }
+    private static void DeleteDownloadFolder(string folder)
+    {
+        if (!Directory.Exists(folder)) return;
+        if ((File.GetAttributes(folder) & FileAttributes.ReparsePoint) != 0) return;
+        var files = Directory.GetFileSystemEntries(folder);
+        if (files.Any(file => (File.GetAttributes(file) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)) return;
+        foreach (var file in files) File.Delete(file);
+        Directory.Delete(folder);
+    }
+    private void CleanupDownloads()
+    {
+        var root = Path.GetFullPath(Path.Combine(directory, "Updates"));
+        try
+        {
+            if (!Directory.Exists(root) || (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) return;
+            var candidates = Directory.GetDirectories(root).Where(folder => Guid.TryParseExact(Path.GetFileName(folder), "N", out _)
+                && (File.GetAttributes(folder) & FileAttributes.ReparsePoint) == 0 && File.Exists(folder + ".lease"))
+                .OrderByDescending(folder => File.GetLastWriteTimeUtc(folder + ".lease")).ToArray();
+            var retained = 0;
+            foreach (var folder in candidates)
+            {
+                var marker = folder + ".lease";
+                try
+                {
+                    if ((File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0) continue;
+                    using (var lease = new FileStream(marker, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                    {
+                        if (lease.Length > 32) continue;
+                        using var reader = new StreamReader(lease, leaveOpen: true);
+                        if (reader.ReadToEnd() != "complete") continue;
+                        if (retained++ < 2) continue;
+                        DeleteDownloadFolder(folder);
+                    }
+                    if (!Directory.Exists(folder)) File.Delete(marker);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Active owner or external file lock: try next time. */ }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Cache maintenance must not prevent update checks. */ }
+    }
+
+    public void LaunchDownload(Action<string> launch)
+    {
+        using var package = OpenVerifiedDownload();
+        var previous = downloadState;
+        SetDownloadState("handed-off");
+        try { launch(package.Name); }
+        catch
+        {
+            try { SetDownloadState(previous); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Keep it protected if restoring the marker fails. */ }
+            throw;
+        }
+    }
 
     // Keep this read handle open until the installer starts, preventing changes after verification.
     public FileStream OpenVerifiedDownload()
@@ -157,5 +237,5 @@ public sealed class GitHubUpdates(HttpClient http, string directory, string curr
         return request;
     }
     public void Cancel() => operation?.Cancel();
-    public void Dispose() { Cancel(); http.Dispose(); }
+    public void Dispose() { Cancel(); ReleaseDownload(); http.Dispose(); }
 }

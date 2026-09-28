@@ -205,7 +205,7 @@ export class Proofreading {
       this.input('ltKey').value='';
       if(form){this.status('Premium-Zugang wird geprüft …');await this.options.rpc('proofPremiumConnect',{username:String(form.get('email')),key:String(form.get('key'))});this.status('Premium-Konto verbunden.');await this.loadStatus()}return;
     }
-    if(action==='premiumDisconnect'){await this.options.rpc('proofPremiumDisconnect');await this.loadStatus();return}
+    if(action==='premiumDisconnect'){this.status('Premium-Konto wird getrennt …');await this.options.rpc('proofPremiumDisconnect');await this.loadStatus();this.status('Premium-Konto getrennt.');return}
     if(action==='codexLogin'){await this.options.rpc('proofCodexLogin');this.status('Anmeldung im Browser abschließen, dann „Status aktualisieren“ wählen.');return}
     if(action==='codexRefresh'){await this.loadStatus();return}
     if(action==='codexLogout'){await this.options.rpc('proofCodexLogout');await this.loadStatus();return}

@@ -20,21 +20,40 @@ public sealed class ConversionService(string? toolsRoot = null)
         foreach (var path in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)) { var candidate = Path.Combine(path, tool + ".exe"); if (File.Exists(candidate)) return candidate; }
         return null;
     }
-    private static async Task<string> Run(string? exe, IEnumerable<string> args, string cwd, string? input = null)
+    internal static async Task<string> Run(string? exe, IEnumerable<string> args, string cwd, string? input = null, TimeSpan? timeLimit = null)
     {
         if (exe is null || !File.Exists(exe)) throw new FileNotFoundException("Der benötigte Konverter fehlt. Bitte Pandoc und Typst über scripts/install-tools.ps1 installieren oder in den Einstellungen auswählen.");
         using var process = new Process { StartInfo = new(exe) { WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 } };
         foreach (var arg in args) process.StartInfo.ArgumentList.Add(arg);
-        process.Start(); var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
-        if (input is not null) await process.StandardInput.WriteAsync(input); process.StandardInput.Close();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-        try { await process.WaitForExitAsync(timeout.Token); }
-        catch (OperationCanceledException) { process.Kill(true); await process.WaitForExitAsync(); throw new TimeoutException("Die Konvertierung hat das Zeitlimit von zwei Minuten überschritten. Das Projekt wurde nicht verändert."); }
-        var output = await stdout; var error = await stderr;
-        if (process.ExitCode != 0) throw new InvalidDataException("Konvertierung fehlgeschlagen: " + error[..Math.Min(error.Length, 3000)]);
-        return output;
+        using var timeout = new CancellationTokenSource(timeLimit ?? TimeSpan.FromMinutes(2));
+        process.Start(); var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token); var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            if (input is not null) { await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token); await process.StandardInput.FlushAsync(timeout.Token); }
+            process.StandardInput.Close();
+            await process.WaitForExitAsync(timeout.Token);
+            var output = await stdout; var error = await stderr;
+            if (process.ExitCode != 0) throw new InvalidDataException("Konvertierung fehlgeschlagen: " + error[..Math.Min(error.Length, 3000)]);
+            return output;
+        }
+        catch
+        {
+            if (!process.HasExited) { try { process.Kill(true); } catch (InvalidOperationException) { } }
+            await process.WaitForExitAsync();
+            try { await Task.WhenAll(stdout, stderr); } catch (Exception ex) when (ex is OperationCanceledException or IOException) { }
+            if (timeout.IsCancellationRequested) throw new TimeoutException("Die Konvertierung hat das Zeitlimit von zwei Minuten überschritten. Das Projekt wurde nicht verändert.");
+            throw;
+        }
     }
     private static string Work() { var path = Path.Combine(Path.GetTempPath(), "Schreibatelier", Model.Id()); Directory.CreateDirectory(path); return path; }
+    internal static string ExportAssetPath(string work, string relative)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(work)) + Path.DirectorySeparatorChar;
+        var file = Path.GetFullPath(Path.Combine(root, relative));
+        if (Path.IsPathRooted(relative) || !file.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new InvalidDataException("Der Bildpfad liegt außerhalb des Exportverzeichnisses.");
+        return file;
+    }
     public async Task<IReadOnlyList<string>> Export(ProjectStore store, ExportOptions options, string destination)
     {
         if (Path.GetExtension(destination).Equals(".schreibprojekt", StringComparison.OrdinalIgnoreCase) || Path.GetFullPath(destination).Equals(store.FilePath, StringComparison.OrdinalIgnoreCase)) throw new IOException("Eine Projektdatei darf nicht durch eine Textausgabe ersetzt werden.");
@@ -68,7 +87,7 @@ public sealed class ConversionService(string? toolsRoot = null)
                     var (info, bytes) = store.GetAsset(id); if (!info.Mime.StartsWith("image/", StringComparison.Ordinal)) throw new InvalidDataException("Ungültiger Bildanhang.");
                     var ext = Path.GetExtension(info.Name).ToLowerInvariant(); if (ext is not (".png" or ".jpg" or ".jpeg" or ".gif" or ".webp")) throw new InvalidDataException("Dieses Bildformat kann nicht ausgegeben werden.");
                     var relative = options.Format is "md" or "latex" ? assetsFolder + "/" + id + ext : id + ext;
-                    var file = Path.Combine(work, relative); Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllBytes(file, bytes); return relative;
+                    var file = ExportAssetPath(work, relative); Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllBytes(file, bytes); return relative;
                 }
                 for (var i = 0; i < docs.Length; i++)
                 {
@@ -154,30 +173,42 @@ public sealed class ConversionService(string? toolsRoot = null)
             foreach (var b in note) blocks.Add(b!.DeepClone());
         }
     }
-    public async Task<(string Body, List<string> Warnings)> Import(string path, ProjectStore store)
+    public async Task<(DocumentInfo Document, List<string> Warnings)> Import(string path, ProjectStore store, string parent)
     {
         var format = Path.GetExtension(path).TrimStart('.').ToLowerInvariant(); if (!TextFormats.Contains(format)) throw new InvalidDataException("Dieses Textformat wird nicht unterstützt.");
         if (new FileInfo(path).Length > 64_000_000) throw new InvalidDataException("Textimporte sind auf 64 MB begrenzt.");
-        if (format == "txt") return (Model.TextBody(await File.ReadAllTextAsync(path)), []);
-        if (format == "fountain") return (FountainCodec.Read(await File.ReadAllTextAsync(path)), []);
-        var work = Work();
+        var title = Path.GetFileNameWithoutExtension(path);
+        if (format == "txt") return (store.AddDocument(parent, title, body: Model.TextBody(await File.ReadAllTextAsync(path))), []);
+        if (format == "fountain") return (store.AddDocument(parent, title, "script", FountainCodec.Read(await File.ReadAllTextAsync(path))), []);
+        var work = Work(); var warnings = new List<string>(); DocumentInfo? imported = null;
         try
         {
             var source = Path.Combine(work, "input." + format); File.Copy(path, source); var media = Path.Combine(work, "media"); Directory.CreateDirectory(media);
-            var inputFormat = format == "md" ? "commonmark_x-raw_html" : format == "html" ? "html+raw_html" : format;
+            var inputFormat = format == "md" ? "commonmark_x-raw_html-smart" : format == "html" ? "html+raw_html" : format;
             var output = await Run(Pandoc, ["--sandbox", "--from=" + inputFormat, "--to=json", "--extract-media=" + media, source], work);
-            var warnings = new List<string>();
+            var assets = new Dictionary<string, ImportAsset>(StringComparer.OrdinalIgnoreCase);
             string? Image(string name)
             {
                 var local = Path.GetFullPath(Path.IsPathRooted(name) ? name : Path.Combine(work, name));
                 if (!local.StartsWith(media + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(local)) return null;
                 var mime = Mime(local); if (!mime.StartsWith("image/", StringComparison.Ordinal)) return null;
-                var asset = store.AddAsset(Path.GetFileName(local), mime, File.ReadAllBytes(local)); return "https://assets.schreibatelier.local/" + asset.Id;
+                if (!assets.TryGetValue(local, out var asset)) { asset = new(Model.Id(), Path.GetFileName(local), mime, local); assets.Add(local, asset); }
+                return "https://assets.schreibatelier.local/" + asset.Id;
             }
             var body = DocumentCodec.FromPandoc(JsonNode.Parse(output)!.AsObject(), Image, warnings); Model.ValidateBody(body);
-            return (body, warnings.Distinct().ToList());
+            warnings = warnings.Distinct().ToList();
+            imported = store.AddDocument(parent, title, "text", body, null, assets.Values.ToArray());
+            return (imported, warnings);
         }
-        finally { Directory.Delete(work, true); }
+        finally
+        {
+            try { Directory.Delete(work, true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A cleanup failure must not turn a committed import into an apparent failure.
+                if (imported is not null) warnings.Add("Importiert; temporäre Importdateien konnten nicht vollständig entfernt werden.");
+            }
+        }
     }
     public static int ImportOutline(string path, ProjectStore store, string parent)
     {

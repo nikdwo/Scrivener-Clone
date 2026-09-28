@@ -22,7 +22,7 @@ static class TimelineChecks
             Check(second.Meta["timeline"]!.ToJsonString()==expected,"Split retains exact time span and strand");
             second.Meta["timeline"]!["start"]!["day"]=0;second=store.SaveDocuments([second]).Single();
             first=store.GetDocument(first.Id);first=store.Merge(first.Id,second.Id,first.Revision,second.Revision);
-            Check(first.Meta["timeline"]!.ToJsonString()==expected&&store.Snapshots(second.Id).Single().Meta["timeline"]!["start"]!["day"]!.GetValue<int>()==0,"Merge keeps first timing and recoverable second timing");
+            Check(first.Meta["timeline"]!.ToJsonString()==expected&&store.GetSnapshot(second.Id,store.Snapshots(second.Id).Single().Id).Meta["timeline"]!["start"]!["day"]!.GetValue<int>()==0,"Merge keeps first timing and recoverable second timing");
             var copy=store.AddDocument("manuscript","Kopie",body:first.Body,meta:first.Meta.DeepClone().AsObject());
             Check(copy.Meta["timeline"]!.ToJsonString()==expected,"Duplicate keeps time span and strand");
             store.Trash(first.Id,true);store.Trash(first.Id,false);Check(store.GetDocument(first.Id).Meta["timeline"]!.ToJsonString()==expected,"Trash and restore retain timeline");

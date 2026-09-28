@@ -3,12 +3,12 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "Schreibatelier dependencies",
-  "documentNamespace": "https://schreibatelier.invalid/spdx/72767019-4b47-4ac5-8a5c-87ec10b23545",
+  "documentNamespace": "https://schreibatelier.invalid/spdx/91c8b2ce-98a8-4e23-9432-797450de6694",
   "creationInfo": {
     "creators": [
       "Tool: Schreibatelier license inventory"
     ],
-    "created": "2026-09-20T15:54:30.813Z"
+    "created": "2026-09-28T18:11:21.085Z"
   },
   "packages": [
     {
@@ -643,17 +643,17 @@
     {
       "SPDXID": "SPDXRef-Package-37",
       "name": "dompurify",
-      "versionInfo": "3.4.14",
-      "downloadLocation": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.14.tgz",
+      "versionInfo": "3.4.16",
+      "downloadLocation": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz",
       "filesAnalyzed": false,
       "licenseDeclared": "(MPL-2.0 OR Apache-2.0)",
       "licenseConcluded": "NOASSERTION",
-      "copyrightText": "See docs/licenses/dompurify-3.4.14.txt",
+      "copyrightText": "See docs/licenses/dompurify-3.4.16.txt",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:npm/dompurify@3.4.14"
+          "referenceLocator": "pkg:npm/dompurify@3.4.16"
         }
       ]
     },

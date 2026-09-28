@@ -39,14 +39,15 @@ let project: any = null, selected = 'manuscript', view = 'write', inspector = 'd
 let editors: Editor[] = [], reference: Editor | null = null, preferences: any = {}, tools: any = {}, collection: any = null;
 let storageDirectory = "Windows-Benutzerprofil / AppData / Local / Schreibatelier";
 let combined = false, combinedLimit = 30, referenceId: string | null = null, saveTimer: any, searchTimer: any, saving: Promise<void> | null = null, serial = 0, sessionStart = 0;
-let selectionRequest = 0, renderRequest = 0;
+let selectionRequest = 0, renderRequest = 0, referenceRequest = 0;
+let transitioning = false, preferenceSave: Promise<void> = Promise.resolve();
 let folderText: string | null = null;
 let confirmedSettings:any={},confirmedTitle="";
 const cache = new Map<string,any>(), dirty = new Map<string,number>(), collapsed = new Set<string>();
 const emptyBody = JSON.stringify({type:'doc',content:[{type:'paragraph'}]});
 const pagination=new Pagination($('editorPane'));
 const proofreading=new Proofreading({rpc,project:()=>project,editor:()=>active,saveSettings:saveProjectSettings,modal});
-const updates=new Updates(rpc,flush,async enabled=>{const previous=preferences.checkUpdatesAtStartup;preferences.checkUpdatesAtStartup=enabled;try{await rpc('preferences',preferences)}catch(e){preferences.checkUpdatesAtStartup=previous;throw e}});
+const updates=new Updates(rpc,transition,enabled=>savePreferences({checkUpdatesAtStartup:enabled}));
 const storyCards=new StoryCards({rpc,project:()=>project,scene:current,editor:()=>active,getDoc,changed,flush,refresh,modal,select:async id=>{await relationships.beforeLeave();if(view==='relationships')view='write';await select(id)},trash:trashDocument,saveSettings:saveProjectSettings,
   beforeLeave:()=>relationships.beforeLeave(),mountRelationships:(target,id)=>relationships.mount(target,id),
   show:()=>{inspector='cards';document.body.classList.add('inspector-visible');renderInspector()},error:message=>toast(message,true)});
@@ -71,8 +72,12 @@ function updateInspectorSize(width?:number) {
   if(actualWidth)handle.setAttribute('aria-valuenow',String(Math.round(actualWidth)));
 }
 function saveInspectorSize() {
-  preferences.inspectorWidth=Math.round($('notebook').getBoundingClientRect().width);
-  void rpc('preferences',preferences).catch(e=>toast(e.message,true));
+  void savePreferences({inspectorWidth:Math.round($('notebook').getBoundingClientRect().width)}).catch(e=>toast(e.message,true));
+}
+function savePreferences(patch:any):Promise<void> {
+  const staged=structuredClone(patch);
+  const next=preferenceSave.then(async()=>{const candidate={...preferences,...staged};await rpc('preferences',candidate);preferences=candidate;});
+  preferenceSave=next.catch(()=>{});return next;
 }
 const inspectorResize=$('inspectorResize');
 inspectorResize.addEventListener('pointerdown',event=>{
@@ -105,42 +110,57 @@ function updateStats() {
   if (!project) return;
   const d=current(); const text=d?.body ? plainText(d.body) : ''; const count=wordCount(text);
   $('wordCount').textContent=`${count.toLocaleString('de-DE')} Wörter · ${[...text].length.toLocaleString('de-DE')} Zeichen`;
-  $('sessionCount').textContent=`Sitzung: ${aggregate()-sessionStart >= 0 ? '+' : ''}${(aggregate()-sessionStart).toLocaleString('de-DE')}${project.settings.sessionTarget?' / '+Number(project.settings.sessionTarget).toLocaleString('de-DE'):''}`;
-  const target=Number(project.settings.wordTarget ?? 0); $('goalLabel').textContent=target ? `${aggregate().toLocaleString('de-DE')} / ${target.toLocaleString('de-DE')} Wörter` : 'Schreibziel setzen';
+  const total=aggregate(),session=total-sessionStart;
+  $('sessionCount').textContent=`Sitzung: ${session >= 0 ? '+' : ''}${(session).toLocaleString('de-DE')}${project.settings.sessionTarget?' / '+Number(project.settings.sessionTarget).toLocaleString('de-DE'):''}`;
+  const target=Number(project.settings.wordTarget ?? 0); $('goalLabel').textContent=target ? `${total.toLocaleString('de-DE')} / ${target.toLocaleString('de-DE')} Wörter` : 'Schreibziel setzen';
 }
 function setDocument(d:any) { const live=cache.get(d.id);if(live&&live!==d)Object.assign(live,d);else cache.set(d.id,d);const old=info(d.id); if(old) Object.assign(old,{...d,body:undefined}); else project.documents.push({...d,body:undefined}); }
 function changed(d:any) {
   if(project.readOnly) return;
+  const renamed=info(d.id)?.title!==d.title;
   d.words=wordCount(plainText(d.body ?? emptyBody)); setDocument(d); dirty.set(d.id,++serial);
   if(isStoryCard(d)){storyCards.invalidate();proofreading.cardsChanged()}
   timeline.update();
   relationships.update();
-  updateDocumentNames();
+  if(renamed)updateDocumentNames(d.id);
   state('Ungespeicherte Änderungen'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>flush().catch(()=>{}),1000); updateStats();
 }
-function updateDocumentNames() {
-  document.querySelectorAll<HTMLElement>('[data-doc] .row-label,[data-folder-entry]').forEach(el=>{
-    const d=info(el.dataset.folderEntry??el.closest<HTMLElement>('[data-doc]')?.dataset.doc);
+function updateDocumentNames(id:string) {
+  const d=info(id);
+  document.querySelectorAll<HTMLElement>(`[data-doc="${CSS.escape(id)}"] .row-label,[data-folder-entry="${CSS.escape(id)}"]`).forEach(el=>{
     if(d){el.textContent=d.title;el.title=d.title;el.closest('[data-doc]')?.setAttribute('aria-label',d.title)}
   });
   const heading=document.querySelector('.folder-overview h2');if(heading)heading.textContent='Inhalt von '+info()?.title;
   const ancestry=[];let p=info();while(p){ancestry.unshift(p.title);p=info(p.parentId)}$('breadcrumb').textContent=ancestry.join(' / ');
 }
 async function flush():Promise<void> {
-  timeline.assertValid();
-  clearTimeout(saveTimer);
-  if(saving) { await saving; if(dirty.size) return flush(); return; }
-  if(!dirty.size) return;
-  const versions=new Map(dirty); const docs=[...versions.keys()].map(id=>JSON.parse(JSON.stringify(cache.get(id))));
+  timeline.assertValid();clearTimeout(saveTimer);
+  if(saving)return saving;
+  if(!dirty.size)return;
   state('Wird gespeichert …');
   saving=(async()=>{
     try {
-      const saved=await rpc('save',{documents:docs});
-      for(const d of saved) { const live=cache.get(d.id); if(dirty.get(d.id)===versions.get(d.id)) { dirty.delete(d.id); setDocument(d); } else if(live) { live.revision=d.revision; setDocument(live); } }
-      state(dirty.size ? 'Ungespeicherte Änderungen' : '✓ Alle Änderungen gespeichert'); renderTree(); updateStats();
-    } catch(e:any) { state('Speichern fehlgeschlagen',true); toast(e.message+' Deine Eingabe bleibt im Editor.',true); throw e; }
-  })();
-  try { await saving; } finally { saving=null; }
+      while(dirty.size){
+        timeline.assertValid();
+        const versions=new Map(dirty),docs=[...versions.keys()].map(id=>structuredClone(cache.get(id)));
+        const saved=await rpc('save',{documents:docs});
+        for(const d of saved){const live=cache.get(d.id);if(dirty.get(d.id)===versions.get(d.id)){dirty.delete(d.id);setDocument(d)}else if(live){live.revision=d.revision;setDocument(live)}}
+      }
+      state('✓ Alle Änderungen gespeichert');renderTree();updateStats();
+    }catch(e:any){state('Speichern fehlgeschlagen',true);toast(e.message+' Deine Eingabe bleibt im Editor.',true);throw e}
+  })().finally(()=>{saving=null});
+  return saving;
+}
+async function transition(work:()=>Promise<any>,terminal=false):Promise<void> {
+  if(transitioning)throw new Error('Ein Projektwechsel läuft bereits.');
+  if($<HTMLDialogElement>('dialog').open)throw new Error('Bitte den geöffneten Dialog zuerst abschließen oder abbrechen.');
+  transitioning=true;const focus=document.activeElement as HTMLElement|null,workspace=$('workspace'),wasInert=workspace.inert;
+  workspace.inert=true;workspace.setAttribute('aria-busy','true');
+  let completed=false;
+  try{await relationships.beforeLeave();await flush();await work();completed=true}
+  finally{
+    if(!terminal||!completed){transitioning=false;workspace.inert=wasInert;workspace.removeAttribute('aria-busy');if(focus?.isConnected)focus.focus({preventScroll:true})}
+  }
 }
 setInterval(()=>{ if(dirty.size) void flush().catch(()=>{}); },5000);
 async function getDoc(id:string) { if(!cache.has(id)) { const owner=project; const d=await rpc('document',{id});if(owner!==project)throw new Error('Das Projekt hat sich während des Ladens geändert.');cache.set(id,d); } return cache.get(id); }
@@ -149,7 +169,7 @@ function renderRecentProjects(entries:{title:string,filePath:string}[]=[]) {
   $('recentProjects').innerHTML=entries.slice(0,3).map(p=>`<li><button type="button" data-recent-project="${h(p.filePath)}" title="${h(p.filePath)}"><span>${h(p.title||p.filePath.split(/[\\/]/).pop())}</span><small>${h(p.filePath)}</small></button></li>`).join('');
   $('recentProjectsEmpty').classList.toggle('hidden',entries.length>0);
 }
-async function adopt(next:any) { if(!next) return;folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); relationships.reset(); if(view==='timeline'||view==='relationships')view='write'; project=next;confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
+async function adopt(next:any) { if(!next) return;++selectionRequest;++renderRequest;++referenceRequest;referenceId=null;reference?.destroy();reference=null;$('referencePane').replaceChildren();$('referencePane').classList.add('hidden');folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false; $('documentContextMenu').hidePopover(); destroyEditors(); storyCards.reset(); timeline.reset(); relationships.reset(); if(view==='timeline'||view==='relationships')view='write'; project=next;confirmedSettings=structuredClone(project.settings);confirmedTitle=project.title; cache.clear(); dirty.clear(); selected='manuscript'; collection=null; sessionStart=aggregate(); $('welcome').classList.add('hidden'); $('workspace').classList.remove('hidden'); $('projectLabel').textContent=project.title; state(project.readOnly ? 'Schreibgeschützt' : '✓ Lokal gespeichert'); renderCollections(); await select(selected); }
 
 function renderTree() {
   if(!project) return;
@@ -250,13 +270,17 @@ function renderBoard() {
   });
 }
 function renderOutline() {
-  const docs=displayDocs(); $('editorPane').innerHTML=`<table class="outline-table"><thead><tr><th>Titel</th><th>Status</th><th>Zusammenfassung</th><th>Wörter</th><th>Ziel</th></tr></thead><tbody>${docs.map((d:any)=>`<tr tabindex="0" role="button" data-outline="${h(d.id)}"><td>${h(d.title)}</td><td><span class="status-pill">${h(d.meta.status||'Entwurf')}</span></td><td class="muted">${h((d.meta.synopsis??'').slice(0,90))}</td><td>${d.words}</td><td>${d.meta.target||'—'}</td></tr>`).join('')}</tbody></table>`;
+  const docs=displayDocs(); $('editorPane').innerHTML=`<table class="outline-table"><thead><tr><th>Titel</th><th>Status</th><th>Zusammenfassung</th><th>Wörter</th><th>Ziel</th></tr></thead><tbody>${docs.map((d:any)=>`<tr tabindex="0" role="button" data-outline="${h(d.id)}"><td>${h(d.title)}</td><td><span class="status-pill">${h(d.meta.status||'Entwurf')}</span></td><td class="muted">${h((d.meta.synopsis??'').slice(0,90))}</td><td>${d.words}</td><td>${h(d.meta.target||'—')}</td></tr>`).join('')}</tbody></table>`;
 }
 async function renderReference() {
-  reference?.destroy();reference=null; $('referencePane').classList.toggle('hidden',!referenceId);if(!referenceId)return;
-  const d=await getDoc(referenceId); const pane=$('referencePane'); pane.innerHTML=`<div class="reference-head"><select id="referenceSelect" aria-label="Referenzabschnitt">${project.documents.filter((x:any)=>!x.deleted).map((x:any)=>`<option value="${h(x.id)}" ${x.id===referenceId?'selected':''}>${h(x.title)}</option>`).join('')}</select><button data-action="splitView" aria-label="Zweite Ansicht schließen">×</button></div><p class="muted">Leseansicht · zum Bearbeiten im Projektbaum öffnen</p><div id="referenceContent"></div>`;
-  if(d.kind==='asset')renderAsset($('referenceContent'),d);else reference=makeEditor($('referenceContent'),d,false);
-  $('referenceSelect').addEventListener('change',()=>{referenceId=$<HTMLSelectElement>('referenceSelect').value;void renderReference()});
+  const request=++referenceRequest,owner=project,id=referenceId,pane=$('referencePane');
+  reference?.destroy();reference=null;pane.replaceChildren();pane.classList.toggle('hidden',!id);if(!id)return;
+  try{
+    const d=await getDoc(id);if(request!==referenceRequest||owner!==project||id!==referenceId)return;
+    pane.innerHTML=`<div class="reference-head"><select id="referenceSelect" aria-label="Referenzabschnitt">${project.documents.filter((x:any)=>!x.deleted).map((x:any)=>`<option value="${h(x.id)}" ${x.id===id?'selected':''}>${h(x.title)}</option>`).join('')}</select><button data-action="splitView" aria-label="Zweite Ansicht schließen">×</button></div><p class="muted">Leseansicht · zum Bearbeiten im Projektbaum öffnen</p><div id="referenceContent"></div>`;
+    if(d.kind==='asset')renderAsset($('referenceContent'),d);else reference=makeEditor($('referenceContent'),d,false);
+    $('referenceSelect').addEventListener('change',()=>{referenceId=$<HTMLSelectElement>('referenceSelect').value;void renderReference()});
+  }catch(e:any){if(request!==referenceRequest||owner!==project)return;referenceId=null;pane.classList.add('hidden');toast(e.message,true)}
 }
 function field(label:string,name:string,value:any='',type='text') { return `<div class="field"><label for="${name}">${h(label)}</label><input id="${name}" name="${name}" type="${type}" ${type==='number'?'step="any"':''} value="${h(value)}"></div>`; }
 function area(label:string,name:string,value:any='') { return `<div class="field"><label for="${name}">${h(label)}</label><textarea id="${name}" name="${name}">${h(value)}</textarea></div>`; }
@@ -278,7 +302,8 @@ function renderInspector() {
     $('commentList').innerHTML=found.length?found.map(n=>`<button data-note-id="${h(n.id)}">${n.kind}: ${h(n.text)}</button>`).join(''):'<p class="muted">Hier erscheinen deine Textanmerkungen. Doppelklick im Text öffnet eine Anmerkung.</p>';
   } else {
     target.innerHTML=`<button class="primary" data-action="snapshot">Textstand sichern</button><p class="muted">Ein Textstand bewahrt Text und Notizen dieses Abschnitts. Projektsicherungen enthalten zusätzlich die gesamte Struktur und Recherche.</p><div id="snapshotList"></div>`;
-    void rpc('snapshots',{id:selected}).then(list=>{if(inspector!=='snapshots')return;$('snapshotList').innerHTML=list.map((s:any)=>`<div class="snapshot"><strong>${h(s.title)}</strong><small>${new Date(s.created).toLocaleString('de-DE')}</small><div><button data-compare="${h(s.id)}">Vergleichen</button> <button data-restore-snapshot="${h(s.id)}">Wiederherstellen</button></div></div>`).join('')});
+    const owner=project,id=selected,listElement=$('snapshotList');
+    void rpc('snapshots',{id}).then(list=>{if(owner!==project||id!==selected||inspector!=='snapshots'||!listElement.isConnected)return;listElement.innerHTML=list.map((s:any)=>`<div class="snapshot"><strong>${h(s.title)}</strong><small>${new Date(s.created).toLocaleString('de-DE')}</small><div><button data-compare="${h(s.id)}">Vergleichen</button> <button data-restore-snapshot="${h(s.id)}">Wiederherstellen</button></div></div>`).join('')}).catch(e=>{if(owner===project&&id===selected&&listElement.isConnected)toast(e.message,true)});
   }
 }
 
@@ -290,7 +315,7 @@ async function modal(title:string,body:string,button='Übernehmen'):Promise<Form
 }
 document.querySelectorAll<HTMLButtonElement>('#dialog [value="cancel"]').forEach(button=>{button.type='button';button.addEventListener('click',()=>$<HTMLDialogElement>('dialog').close('cancel'))});
 async function textPrompt(title:string,label:string,value='',multiline=false) {const data=await modal(title,multiline?area(label,'value',value):field(label,'value',value));return data?String(data.get('value')):null}
-async function requireWrite() { if(!project)throw new Error('Bitte zuerst ein Projekt öffnen.');if(project.readOnly)throw new Error('Dieses Projekt ist schreibgeschützt.');await flush(); }
+async function requireWrite() { if(transitioning)throw new Error('Bitte warten, bis der Projektwechsel abgeschlossen ist.');if(!project)throw new Error('Bitte zuerst ein Projekt öffnen.');if(project.readOnly)throw new Error('Dieses Projekt ist schreibgeschützt.');await flush(); }
 async function addDocument(kind='text',template?:string) {
   await requireWrite();const name=await textPrompt(kind==='folder'?'Ordner anlegen':'Neuer Abschnitt','Titel',kind==='folder'?'Neues Kapitel':'Neuer Abschnitt');if(!name?.trim())return;
   const body=template ? JSON.stringify({type:'doc',content:template.split('\n').map(text=>({type:'paragraph',content:text?[{type:'text',text}]:[]}))}) : undefined;
@@ -327,7 +352,7 @@ async function saveProjectSettings(changes?:any) {
   await rpc('settings',{projectId:owner,title,settings,baseSettings,baseTitle});if(project?.id===owner)await refresh();
 }
 function updateFormatButtons() {document.querySelectorAll<HTMLElement>('[data-format]').forEach(b=>b.classList.toggle('active',!!active?.isActive(b.dataset.format!)))}
-async function setView(next:string) {await relationships.beforeLeave();await flush();view=next;if(next==='timeline'||next==='relationships')collection=null;await renderView()}
+async function setView(next:string) {await relationships.beforeLeave();await flush();view=next;if(next!=='board')collection=null;renderCollections();await renderView()}
 
 function findHits(doc:any,query:string) {
   const hits:{from:number,to:number}[]=[];
@@ -360,15 +385,15 @@ const actions:Record<string,()=>any>={
   folderText:async()=>{await flush();folderText=selected;await renderView()},
   folderOverview:async()=>{await flush();folderText=null;combined=false;$<HTMLInputElement>('combined').checked=false;await renderView()},
   updates:()=>updates.check(),
-  new:async()=>{await flush();await adopt(await rpc('new'))},open:async()=>{await flush();await adopt(await rpc('open'))},save:async()=>{await flush();toast('Alle Änderungen sind gespeichert.')},
+  new:()=>transition(async()=>adopt(await rpc('new'))),open:()=>transition(async()=>adopt(await rpc('open'))),save:async()=>{await flush();toast('Alle Änderungen sind gespeichert.')},
   moreSections:async()=>{await flush();combinedLimit+=30;await renderView()},
   inspectorToggle:()=>document.body.classList.toggle('inspector-visible'),
   proof:()=>{inspector='proof';document.body.classList.add('inspector-visible');renderInspector()},
   saveCopy:async()=>{await flush();const path=await rpc('saveCopy');if(path)toast('Projektkopie gespeichert: '+path)},
-  restoreBackup:async()=>{await flush();await adopt(await rpc('restoreBackup'))},backup:async()=>{await flush();toast('Sicherung erstellt: '+await rpc('backup'))},
-  close:async()=>{await flush();await rpc('close')},newDocument:()=>addDocument(),newFolder:()=>addDocument('folder'),
+  restoreBackup:()=>transition(async()=>adopt(await rpc('restoreBackup'))),backup:async()=>{await flush();toast('Sicherung erstellt: '+await rpc('backup'))},
+  close:()=>transition(()=>rpc('close'),true),newDocument:()=>addDocument(),newFolder:()=>addDocument('folder'),
   write:()=>setView('write'),board:()=>setView('board'),outline:()=>setView('outline'),timeline:()=>setView('timeline'),relationships:()=>setView('relationships'),
-  theme:async()=>{document.body.classList.toggle('dark');preferences.theme=document.body.classList.contains('dark')?'dark':'light';await rpc('preferences',preferences)},
+  theme:async()=>{document.body.classList.toggle('dark');try{await savePreferences({theme:document.body.classList.contains('dark')?'dark':'light'})}finally{document.body.classList.toggle('dark',preferences.theme==='dark')}},
   focus:()=>{document.body.classList.toggle('focus-mode');$('exitFocus').classList.toggle('hidden',!document.body.classList.contains('focus-mode'))},
   splitView:async()=>{referenceId=referenceId?null:selected;await renderReference()},
   import:async()=>{await requireWrite();const result=await rpc('import',{parent:parentForNew()});if(result){await refresh(result.project);await renderView();await modal('Import abgeschlossen',`<p>${result.count} Abschnitt(e) übernommen.</p><p class="muted">Originaldateien wurden nicht verändert. Komplexe Formatierung und nicht unterstützte Elemente können abweichen; bitte den importierten Text prüfen.</p>${result.warnings.map((w:string)=>`<p>${h(w)}</p>`).join('')}`,'Schließen')}},
@@ -408,11 +433,11 @@ const actions:Record<string,()=>any>={
   manageCollection:async()=>{await requireWrite();const list=project.settings.collections??[];if(!list.length)throw new Error('Noch keine Sammlungen vorhanden.');const form=await modal('Sammlungen bearbeiten',`<div class="field"><label for="collectionEdit">Sammlung</label><select id="collectionEdit" name="index">${list.map((c:any,i:number)=>`<option value="${i}">${h(c.title)}</option>`).join('')}</select></div><div class="field"><label for="collectionAction">Aktion</label><select id="collectionAction" name="action"><option value="rename">Umbenennen</option><option value="query">Suchbegriff ändern (dynamisch)</option><option value="remove">Aktuellen Abschnitt entfernen (manuell)</option><option value="delete">Sammlung löschen; Texte bleiben erhalten</option></select></div>`+field('Neuer Name oder Suchbegriff','value'));if(!form)return;const index=Number(form.get('index')),c=list[index],action=String(form.get('action')),value=String(form.get('value')).trim();if(action==='delete')list.splice(index,1);else if(action==='remove'){if(!c.ids)throw new Error('Diese Sammlung ist dynamisch.');c.ids=c.ids.filter((id:string)=>id!==selected)}else if(action==='query'){delete c.ids;c.query=value}else if(value)c.title=value;else throw new Error('Bitte einen Namen eingeben.');collection=null;await saveProjectSettings();await renderView()},
   moreFormat:async()=>{await modal('Weitere Textwerkzeuge',`<div class="dialog-list"><button type="button" data-menu-action="typography">Schrift, Größe, Zeilenabstand und Farben</button><button type="button" data-menu-action="internalLink">Verweis auf einen Abschnitt</button></div><div class="format-grid" style="margin-top:15px">${[['undo','Rückgängig'],['redo','Wiederholen'],['toggleSuperscript','Hochgestellt'],['toggleSubscript','Tiefgestellt'],['addRowAfter','Tabellenzeile hinzufügen'],['deleteRow','Tabellenzeile löschen'],['addColumnAfter','Tabellenspalte hinzufügen'],['deleteColumn','Tabellenspalte löschen'],['deleteTable','Tabelle löschen'],['clearNodes','Absatzformat zurücksetzen']].map(([a,t])=>`<button type="button" data-editor-command="${a}">${t}</button>`).join('')}</div><div class="field" style="margin-top:20px"><label>Drehbuchelement</label><select id="scriptElement"><option value="action">Handlung</option><option value="scene">Szenenüberschrift</option><option value="character">Figur</option><option value="dialogue">Dialog</option><option value="parenthetical">Regieanweisung</option><option value="transition">Übergang</option></select><button type="button" data-action="applyScript">Anwenden</button></div>`,'Schließen')},
   applyScript:()=>{const element=$<HTMLSelectElement>('scriptElement').value;$<HTMLDialogElement>('dialog').close('cancel');active?.chain().focus().setNode('script',{element}).run()},
-  settings:async()=>{const form=await modal('Einstellungen',`<p class="muted">Projekte werden lokal gespeichert. Online-Sprachprüfungen senden den ausgewählten Text erst nach deinem Start an den gewählten Anbieter. Konverter werden nur für Import und Ausgabe gestartet.</p>${field('Pandoc – vollständiger Programmpfad','pandoc',tools.pandoc??preferences.pandoc??'')}${field('Typst – vollständiger Programmpfad','typst',tools.typst??preferences.typst??'')}<p class="muted">Automatisches Speichern: nach 1 Sekunde Pause, spätestens nach 5 Sekunden. Projektsicherungen: Öffnen und Schließen, die letzten 20 Sicherungen. Speicherort: ${h(storageDirectory)} / Backups.</p>${project?field('Projekttitel','projectTitle',project.title):''}`);if(form){preferences.pandoc=String(form.get('pandoc'));preferences.typst=String(form.get('typst'));await rpc('preferences',preferences);tools={pandoc:preferences.pandoc,typst:preferences.typst};if(project&&!project.readOnly){project.title=String(form.get('projectTitle'));await saveProjectSettings();$('projectLabel').textContent=project.title}}},
+  settings:async()=>{const form=await modal('Einstellungen',`<p class="muted">Projekte werden lokal gespeichert. Online-Sprachprüfungen senden den ausgewählten Text erst nach deinem Start an den gewählten Anbieter. Konverter werden nur für Import und Ausgabe gestartet.</p>${field('Pandoc – vollständiger Programmpfad','pandoc',tools.pandoc??preferences.pandoc??'')}${field('Typst – vollständiger Programmpfad','typst',tools.typst??preferences.typst??'')}<p class="muted">Automatisches Speichern: nach 1 Sekunde Pause, spätestens nach 5 Sekunden. Projektsicherungen: Öffnen und Schließen, die letzten 20 Sicherungen. Speicherort: ${h(storageDirectory)} / Backups.</p>${project?field('Projekttitel','projectTitle',project.title):''}`);if(form){const nextTools={pandoc:String(form.get('pandoc')),typst:String(form.get('typst'))};await savePreferences(nextTools);tools=nextTools;if(project&&!project.readOnly){project.title=String(form.get('projectTitle'));await saveProjectSettings();$('projectLabel').textContent=project.title}}},
   help:async()=>{await modal('Willkommen im Schreibatelier',`<p>Lege links Kapitel und Abschnitte an. Schreibe in der Mitte und halte rechts Zusammenfassungen, Schlagwörter und Notizen fest.</p><p>Die Pinnwand und die Gliederung zeigen die Unterabschnitte deiner Auswahl. Verschieben ändert überall dieselbe Projektstruktur.</p><p><b>Strg+S</b> speichert sofort. <b>F11</b> öffnet den Fokusmodus. Unter „Stände“ sicherst du Fassungen einzelner Abschnitte; unter Datei sicherst du das gesamte Projekt.</p><p>Recherchedateien fügst du über das Abschnittsmenü hinzu. Die zweite Ansicht bleibt zum Nachschlagen schreibgeschützt.</p><p>Über „Exportieren“ wählst du Texte und Ausgabeformat. Für DOCX, RTF, ODT, HTML, Markdown und EPUB brauchst du Pandoc; PDF benötigt außerdem Typst. Die Anwendung arbeitet ohne Konto.</p>`,'Schließen')},
   licenses:async()=>{const text=await rpc('licenses');await modal('Lizenzen und Herkunft',`<pre class="license-text">${h(text)}</pre>`,'Schließen')},
 };
-async function perform(action:string) {try{await relationships.beforeLeave();await actions[action]?.()}catch(e:any){toast(e.message,true)}}
+async function perform(action:string) {if(transitioning)return;try{if(!['new','open','restoreBackup','close'].includes(action))await relationships.beforeLeave();await actions[action]?.()}catch(e:any){toast(e.message,true)}}
 
 const documentContextMenu=$('documentContextMenu'),contextTrash=$<HTMLButtonElement>('contextTrash');
 let contextDocument='',contextProject='',contextOrigin:HTMLElement|null=null;
@@ -449,7 +474,7 @@ document.addEventListener('pointerdown',event=>{if((event.target as HTMLElement)
 document.addEventListener('click',event=>{
   const el=event.target as HTMLElement;
   const folderEntry=el.closest<HTMLElement>('[data-folder-entry]');if(folderEntry){void select(folderEntry.dataset.folderEntry!).catch(e=>toast(e.message,true));return}
-  const recent=el.closest<HTMLButtonElement>('[data-recent-project]');if(recent){recent.disabled=true;void(async()=>{await flush();await adopt(await rpc('openRecent',{path:recent.dataset.recentProject}))})().catch(e=>toast(e.message,true)).finally(()=>{recent.disabled=false});return}
+  const recent=el.closest<HTMLButtonElement>('[data-recent-project]');if(recent){recent.disabled=true;void transition(async()=>adopt(await rpc('openRecent',{path:recent.dataset.recentProject}))).catch(e=>toast(e.message,true)).finally(()=>{recent.disabled=false});return}
   const link=el.closest<HTMLAnchorElement>('.tiptap a');if(link){event.preventDefault();const href=link.getAttribute('href')??'';if(href.startsWith('#')){const id=href.slice(1);if(info(id)&&!info(id).deleted){if(!isStoryCard(info(id)))view='write';void select(id).catch(e=>toast(e.message,true))}else toast('Der verknüpfte Abschnitt ist nicht verfügbar.',true)}else if(/^(https?:\/\/|mailto:)/i.test(href))window.open(href,'_blank','noopener');return}
   const noteItem=el.closest<HTMLElement>('[data-note-id]');if(noteItem){void editNote(noteItem.dataset.noteId!).catch(e=>toast(e.message,true));return}
   const menu=el.closest<HTMLElement>('[data-menu-action]');if(menu){const dialog=$<HTMLDialogElement>('dialog');dialog.addEventListener('close',()=>{void perform(menu.dataset.menuAction!)},{once:true});dialog.close('cancel');return}
@@ -459,12 +484,12 @@ document.addEventListener('click',event=>{
   const tab=el.closest<HTMLElement>('[data-inspector]');if(tab){void relationships.beforeLeave().then(()=>{inspector=tab.dataset.inspector!;renderInspector()}).catch(e=>toast(e.message,true));return}
   const collapse=el.closest<HTMLElement>('[data-collapse]');if(collapse){const id=collapse.dataset.collapse!;collapsed.has(id)?collapsed.delete(id):collapsed.add(id);renderTree();return}
   const doc=el.closest<HTMLElement>('[data-doc]');if(doc){folderText=null;void select(doc.dataset.doc!).catch(e=>toast(e.message,true));return}
-  const collect=el.closest<HTMLElement>('[data-collection]');if(collect){void relationships.beforeLeave().then(()=>flush()).then(()=>{collection=project.settings.collections[Number(collect.dataset.collection)];renderBoard();renderCollections()}).catch(e=>toast(e.message,true));return}
+  const collect=el.closest<HTMLElement>('[data-collection]');if(collect){void relationships.beforeLeave().then(()=>flush()).then(async()=>{collection=project.settings.collections[Number(collect.dataset.collection)];view='board';await renderView();renderCollections()}).catch(e=>toast(e.message,true));return}
   const fmt=el.closest<HTMLElement>('[data-format]');if(fmt&&active){const format=fmt.dataset.format!;const chain=active.chain().focus();if(['left','center','right','justify'].includes(format))chain.setTextAlign(format).run();else(chain as any)['toggle'+format[0].toUpperCase()+format.slice(1)]?.().run();updateFormatButtons();return}
   const asset=el.closest<HTMLElement>('[data-asset-download]');if(asset){void rpc('exportAsset',{id:asset.dataset.assetDownload}).catch(e=>toast(e.message,true));return}
   const result=el.closest<HTMLElement>('[data-result]');if(result){view='write';void select(result.dataset.result!);return}
   const restore=el.closest<HTMLElement>('[data-restore-doc]');if(restore){void restoreDocument(restore.dataset.restoreDoc!).catch(e=>toast(e.message,true));return}
-  const compare=el.closest<HTMLElement>('[data-compare]');if(compare){void(async()=>{await flush();const snapshots=await rpc('snapshots',{id:selected});const s=snapshots.find((x:any)=>x.id===compare.dataset.compare);await modal('Änderungen seit „'+s.title+'“',`<p class="muted">Vergleich des Haupttexts: rot entfernt, grün ergänzt. Formatierung und Fußnoten werden hier nicht verglichen.</p><div class="diff dialog-body-scroll">${diffWords(plainText(s.body),plainText(current().body)).map(p=>`<${p.added?'ins':p.removed?'del':'span'}>${h(p.value)}</${p.added?'ins':p.removed?'del':'span'}>`).join('')}</div>`,'Schließen')})().catch(e=>toast(e.message,true));return}
+  const compare=el.closest<HTMLElement>('[data-compare]');if(compare){void(async()=>{const owner=project,id=selected;await flush();const s=await rpc('getSnapshot',{id,snapshotId:compare.dataset.compare});if(owner!==project||id!==selected)return;await modal('Änderungen seit „'+s.title+'“',`<p class="muted">Vergleich des Haupttexts: rot entfernt, grün ergänzt. Formatierung und Fußnoten werden hier nicht verglichen.</p><div class="diff dialog-body-scroll">${diffWords(plainText(s.body),plainText(current().body)).map(p=>`<${p.added?'ins':p.removed?'del':'span'}>${h(p.value)}</${p.added?'ins':p.removed?'del':'span'}>`).join('')}</div>`,'Schließen')})().catch(e=>toast(e.message,true));return}
   const restoreSnapshot=el.closest<HTMLElement>('[data-restore-snapshot]');if(restoreSnapshot){void(async()=>{await requireWrite();if(await modal('Textstand wiederherstellen','<p>Der aktuelle Text wird zuvor als eigener Stand gesichert.</p>','Wiederherstellen')){setDocument(await rpc('restoreSnapshot',{id:selected,snapshotId:restoreSnapshot.dataset.restoreSnapshot}));await select(selected)}})().catch(e=>toast(e.message,true));return}
 });
 document.addEventListener('dblclick',event=>{

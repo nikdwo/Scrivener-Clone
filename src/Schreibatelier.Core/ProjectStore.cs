@@ -129,6 +129,8 @@ public sealed class ProjectStore : IDisposable
         Execute(db, "INSERT INTO documents(" + Columns + ",plain) VALUES($id,$parent,$pos,$title,$kind,$body,$meta,0,0,$words,$modified,$plain)", ("$id", d.Id), ("$parent", d.ParentId), ("$pos", d.Position), ("$title", d.Title), ("$kind", d.Kind), ("$body", body), ("$meta", d.Meta.ToJsonString()), ("$words", Model.WordCount(plain)), ("$modified", d.Modified), ("$plain", plain));
     }
     public DocumentInfo AddDocument(string parent, string title, string kind = "text", string? body = null, JsonObject? meta = null)
+        => AddDocument(parent, title, kind, body, meta, []);
+    internal DocumentInfo AddDocument(string parent, string title, string kind, string? body, JsonObject? meta, IReadOnlyList<ImportAsset> assets)
     {
         Writable();
         if (kind is not ("text" or "folder" or "asset" or "script")) throw new InvalidDataException("Unbekannte Dokumentart.");
@@ -136,7 +138,13 @@ public sealed class ProjectStore : IDisposable
         using var db = Connect(); using var tx = db.BeginTransaction(); var p = Get(db, parent);
         if (p.Deleted || p.Kind == "asset") throw new InvalidDataException("Hier kann kein Abschnitt angelegt werden.");
         var d = new DocumentInfo { ParentId = parent, Title = title, Kind = kind, Body = body ?? Model.EmptyBody, Meta = meta ?? new(), Position = Convert.ToInt32(Scalar(db, "SELECT COALESCE(MAX(position),-1)+1 FROM documents WHERE parent_id=$id", ("$id", parent))) };
-        Insert(db, d); tx.Commit(); return GetDocument(d.Id);
+        Insert(db, d);
+        foreach (var asset in assets)
+        {
+            if (new FileInfo(asset.FilePath).Length > 256_000_000) throw new InvalidDataException("Anhänge sind auf 256 MB pro Datei begrenzt.");
+            InsertAsset(db, asset.Id, asset.Name, asset.Mime, File.ReadAllBytes(asset.FilePath));
+        }
+        var saved = Get(db, d.Id); tx.Commit(); return saved;
     }
     public IReadOnlyList<DocumentInfo> SaveDocuments(DocumentInfo[] changes, bool snapshotBefore = false)
     {
@@ -274,20 +282,30 @@ public sealed class ProjectStore : IDisposable
         Writable(); using var db = Connect(); var d = Get(db, documentId); var id = Model.Id();
         Execute(db, "INSERT INTO snapshots VALUES($id,$doc,$title,$now,$body,$meta)", ("$id", id), ("$doc", documentId), ("$title", title), ("$now", DateTimeOffset.UtcNow.ToString("O")), ("$body", d.Body), ("$meta", d.Meta.ToJsonString())); return id;
     }
-    public IReadOnlyList<SnapshotInfo> Snapshots(string documentId)
+    public IReadOnlyList<SnapshotSummary> Snapshots(string documentId)
     {
-        using var db = Connect(); using var cmd = Command(db, "SELECT id,document_id,title,created,body,meta FROM snapshots WHERE document_id=$id ORDER BY created DESC", ("$id", documentId)); using var r = cmd.ExecuteReader();
-        var list = new List<SnapshotInfo>(); while (r.Read()) list.Add(new(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), Obj(r.GetString(5)))); return list;
+        using var db = Connect(); using var cmd = Command(db, "SELECT id,document_id,title,created FROM snapshots WHERE document_id=$id ORDER BY created DESC", ("$id", documentId)); using var r = cmd.ExecuteReader();
+        var list = new List<SnapshotSummary>(); while (r.Read()) list.Add(new(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3))); return list;
+    }
+    public SnapshotInfo GetSnapshot(string documentId, string snapshotId)
+    {
+        using var db = Connect(); using var cmd = Command(db, "SELECT id,document_id,title,created,body,meta FROM snapshots WHERE document_id=$document AND id=$snapshot", ("$document", documentId), ("$snapshot", snapshotId)); using var r = cmd.ExecuteReader();
+        if (!r.Read()) throw new KeyNotFoundException("Textstand nicht gefunden.");
+        return new(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), Obj(r.GetString(5)));
     }
     public void RestoreSnapshot(string documentId, string snapshotId)
     {
-        var snapshot = Snapshots(documentId).Single(x => x.Id == snapshotId);
+        var snapshot = GetSnapshot(documentId, snapshotId);
         Snapshot(documentId, "Vor Wiederherstellung"); var d = GetDocument(documentId); d.Body = snapshot.Body; d.Meta = snapshot.Meta; SaveDocuments([d]);
     }
     public AssetInfo AddAsset(string name, string mime, byte[] data)
     {
-        Writable(); if (data.LongLength > 256_000_000) throw new InvalidDataException("Anhänge sind auf 256 MB pro Datei begrenzt.");
-        using var db = Connect(); var id = Model.Id(); Execute(db, "INSERT INTO assets VALUES($id,$name,$mime,$data)", ("$id", id), ("$name", Path.GetFileName(name)), ("$mime", mime), ("$data", data)); return new(id, Path.GetFileName(name), mime, data.LongLength);
+        Writable(); using var db = Connect(); return InsertAsset(db, Model.Id(), name, mime, data);
+    }
+    private static AssetInfo InsertAsset(SqliteConnection db, string id, string name, string mime, byte[] data)
+    {
+        if (data.LongLength > 256_000_000) throw new InvalidDataException("Anhänge sind auf 256 MB pro Datei begrenzt.");
+        Execute(db, "INSERT INTO assets VALUES($id,$name,$mime,$data)", ("$id", id), ("$name", Path.GetFileName(name)), ("$mime", mime), ("$data", data)); return new(id, Path.GetFileName(name), mime, data.LongLength);
     }
     public (AssetInfo Info, byte[] Data) GetAsset(string id)
     {

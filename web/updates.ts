@@ -7,7 +7,7 @@ export class Updates {
   private installing = false;
   private release:Release|null = null;
   private downloaded = false;
-  constructor(private rpc:(action:string,args?:any)=>Promise<any>, private flush:()=>Promise<void>, saveAutomatic:(enabled:boolean)=>Promise<void>) {
+  constructor(private rpc:(action:string,args?:any)=>Promise<any>, private transition:(work:()=>Promise<any>,terminal?:boolean)=>Promise<void>, saveAutomatic:(enabled:boolean)=>Promise<void>) {
     this.dialog.id='updateDialog';this.dialog.setAttribute('aria-labelledby','updateTitle');
     this.dialog.innerHTML=`<div class="dialog-header"><h2 id="updateTitle">Schreibatelier aktualisieren</h2></div><p id="updateVersion"></p><label class="form-check"><input type="checkbox" id="updateAuto"> Beim Programmstart nach Updates suchen</label><p id="updateStatus" role="status" aria-live="polite"></p><progress id="updateProgress" max="100" hidden aria-label="Update-Download"></progress><pre id="updateNotes" class="license-text" hidden></pre><p id="updateInstructions" class="muted"></p><div class="dialog-actions"><button id="updateClose">Schließen</button><button id="updateCheck">Erneut prüfen</button><button id="updateDownload" class="primary" hidden>Herunterladen</button><button id="updateInstall" class="primary" hidden>Speichern und Installer starten</button><button id="updateShow" hidden>Downloadordner öffnen</button></div>`;
     document.body.append(this.dialog);
@@ -69,7 +69,7 @@ export class Updates {
   }
   private async install() {
     if(this.busy||!this.downloaded||this.portable)return;this.busy=true;this.installing=true;this.controls();this.button('updateClose').disabled=true;
-    try { this.status('Projekt wird gespeichert und gesichert …');await this.flush();await this.rpc('updateInstall');this.status('Installer gestartet. Schreibatelier wird geschlossen.'); }
+    try { this.status('Projekt wird gespeichert und gesichert …');await this.transition(()=>this.rpc('updateInstall'),true);this.status('Installer gestartet. Schreibatelier wird geschlossen.'); }
     catch(e:any) { this.status(e.message); }
     finally {this.busy=false;this.installing=false;this.controls();this.button('updateClose').disabled=false}
   }

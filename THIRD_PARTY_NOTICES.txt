@@ -1797,9 +1797,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
 
-dompurify 3.4.14
+dompurify 3.4.16
 License: (MPL-2.0 OR Apache-2.0)
-Source: https://registry.npmjs.org/dompurify/-/dompurify-3.4.14.tgz
+Source: https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz
 LICENSE
 
                                  Apache License

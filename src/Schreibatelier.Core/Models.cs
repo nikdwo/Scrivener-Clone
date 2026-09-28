@@ -8,6 +8,15 @@ public static partial class Model
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
     public static string Id() => Guid.NewGuid().ToString("N");
+    public static string AssetId(string? source)
+    {
+        const string prefix = "https://assets.schreibatelier.local/";
+        if (source is null || !source.StartsWith(prefix, StringComparison.Ordinal) || source.Length != prefix.Length + 32)
+            throw new InvalidDataException("Ungültige Bildreferenz. Bilder müssen ins Projekt importiert werden.");
+        var id = source[prefix.Length..];
+        if (!id.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')) throw new InvalidDataException("Ungültige Bildkennung.");
+        return id;
+    }
     public static string EmptyBody => "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}";
     public static string TextBody(string text) => JsonSerializer.Serialize(new { type = "doc", content = text.Replace("\r", "").Split('\n').Select(t => new { type = "paragraph", content = t.Length == 0 ? Array.Empty<object>() : new object[] { new { type = "text", text = t } } }) }, Json);
     public static string PlainText(string body)
@@ -47,10 +56,11 @@ public static partial class Model
             if (mark.GetProperty("type").GetString() == "link" && mark.TryGetProperty("attrs", out var a) && a.TryGetProperty("href", out var href))
                 ValidateLink(href.GetString() ?? "");
         }
-        if (type.GetString() == "image" && n.TryGetProperty("attrs", out var attrs) && attrs.TryGetProperty("src", out var src))
+        if (type.GetString() == "image")
         {
-            var s = src.GetString() ?? "";
-            if (!s.StartsWith("https://assets.schreibatelier.local/", StringComparison.Ordinal)) throw new InvalidDataException("Bilder müssen ins Projekt importiert werden.");
+            if (!n.TryGetProperty("attrs", out var attrs) || attrs.ValueKind != JsonValueKind.Object || !attrs.TryGetProperty("src", out var src) || src.ValueKind != JsonValueKind.String)
+                throw new InvalidDataException("Dem Bild fehlt eine gültige Projekt-Bildreferenz.");
+            AssetId(src.GetString());
         }
         if (n.TryGetProperty("content", out var children)) foreach (var child in children.EnumerateArray()) ValidateNode(child, depth + 1);
     }
@@ -109,6 +119,8 @@ public sealed record DocumentInfo
 }
 public sealed record ProjectInfo(string Id, string Title, JsonObject Settings, IReadOnlyList<DocumentInfo> Documents, bool ReadOnly, string FilePath);
 public sealed record SnapshotInfo(string Id, string DocumentId, string Title, string Created, string Body, JsonObject Meta);
+public sealed record SnapshotSummary(string Id, string DocumentId, string Title, string Created);
+internal sealed record ImportAsset(string Id, string Name, string Mime, string FilePath);
 public sealed record AssetInfo(string Id, string Name, string Mime, long Size);
 public sealed record ExportOptions(string Format, string Title, string Author, string[] DocumentIds, bool IncludeComments = false, bool IncludeTitles = true, string Paper = "a4", string Font = "Libertinus Serif", int FontSize = 11, string Separator = "* * *", bool TableOfContents = true, bool Endnotes = false);
 public sealed class RevisionConflictException(string message) : Exception(message);

@@ -27,11 +27,18 @@ public sealed class ProofreadingService(string dataDirectory, string? toolsDirec
     private static string Text(JsonNode? node) => node?.GetValue<string>() ?? "";
     private static string? Find(string? folder, string file) => folder is not null && Directory.Exists(folder) ? Directory.EnumerateFiles(folder, file, SearchOption.AllDirectories).FirstOrDefault() : null;
 
+    internal ProofreadingService(string dataDirectory, string? toolsDirectory, HttpClient online) : this(dataDirectory, toolsDirectory) { this.online.Dispose(); this.online = online; }
+
     public object Status() => new { localAvailable = Find(toolsDirectory, "languagetool-server.jar") is not null && Find(toolsDirectory, "java.exe") is not null, premiumConnected = File.Exists(SecretFile), codexAvailable = CodexProofreader.FindExecutable() is not null };
     public Task<object> CodexStatus() => codex.Status();
     public Task<object> CodexLogin() => codex.Login();
     public Task CodexLogout() => codex.Logout();
-    public void DisconnectPremium() { if (File.Exists(SecretFile)) File.Delete(SecretFile); }
+    public async Task DisconnectPremium()
+    {
+        await gate.WaitAsync();
+        try { if (File.Exists(SecretFile)) File.Delete(SecretFile); }
+        finally { gate.Release(); }
+    }
     public void Cancel() { checking?.Cancel(); codex.Cancel(); }
 
     public async Task ConnectPremium(string username, string key)

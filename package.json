@@ -6,7 +6,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "node scripts/build-web.mjs",
-    "test": "node --test tests/web.test.mjs tests/styleanalysis.test.mjs tests/timeline.test.mjs tests/relationships.test.mjs",
+    "test": "node --test tests/web.test.mjs tests/styleanalysis.test.mjs tests/timeline.test.mjs tests/relationships.test.mjs tests/test-server.test.mjs",
     "test:ui": "playwright test",
     "licenses": "node scripts/licenses.mjs"
   },
@@ -22,7 +22,7 @@
     "@tiptap/pm": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "diff": "9.0.0",
-    "dompurify": "3.4.14"
+    "dompurify": "3.4.16"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

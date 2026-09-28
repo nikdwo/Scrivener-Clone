@@ -1,5 +1,27 @@
 # Validierung – Alpha 6 (0.1.0-alpha.6)
 
+## Review-Korrekturen, 28. September 2026
+
+Implementiert auf `codex/codereview-fix`, ausgehend von `5b9538b`. F1–F17 sind umgesetzt; Projektformat und SQLite-Schemaversion bleiben unverändert. Keine Veröffentlichung und kein Installerstart.
+
+- **Datenintegrität (F1/F2/F3/F5/F6/F15):** Gemeinsame Prüfung interner Bildkennungen und Exportpfade; Speichern leert alle offenen Revisionen, Projektübergänge sperren die Bearbeitung und offene Eingabedialoge verhindern einen Wechsel; Kandidatenprojekte werden vor dem Store-Austausch validiert; Import erhält Anführungszeichen und speichert Dokument/Bilder in einer Transaktion; Sammlungen geben alte Editorinstanzen frei.
+- **Funktion und Stabilität (F4/F7/F8/F11/F12/F13):** Gliederungsmetadaten werden escaped; Referenzansichten verwerfen alte Antworten; Konverter-Zeitlimit umfasst auch stdin; Codex-Prozess und Reader besitzen ihre jeweiligen offenen Anfragen; Premium-Trennung verwendet die Anmeldesperre; Einstellungen werden validiert und atomar gespeichert. Die Oberfläche übernimmt Einstellungen erst nach erfolgreichem Schreiben.
+- **Gezielte Pflege (F9/F10/F14/F16/F17):** Snapshotlisten enthalten nur Zusammenfassungen, Einzelstände werden gezielt geladen; normale Texteingaben ändern keine Titelzeilen; UI-Tests bauen zwingend aktuelle Quellen; Updatecache schützt aktive und übergebene Pakete und behält zwei inaktive Pakete; ausschließlich DOMPurify wurde auf 3.4.16 aktualisiert, einschließlich Lockdatei und Lizenznachweisen.
+
+Aktuelle Abnahme:
+
+- **237 Core-/Konverterprüfungen bestanden:** vier Bildreferenz-, 32 neue Review-, 33 Beziehungsnetz-, 34 Zeitstrahl-, 33 Karten- und 101 allgemeine Prüfungen. Fehlende Bilder erhalten vorhandene Ausgabedateien und Anhänge in allen sieben bildfähigen Formaten; ungültige Pfadformen werden ohne Schreibversuche außerhalb des Testverzeichnisses geprüft. Nachweis: `artifacts/review-core-checks.log`.
+- **46 Sprachprüfungen bestanden:** Parser, Fake-Codex-Server mit EOF/ungültigen Antworten, Neustart und alten Anfragen, konkurrierende Premium-Verbindung/Trennung sowie echte lokale LanguageTool-Prüfung. Ausführung im normalen Windows-Benutzerkontext; kein echtes Premium-/Codex-Konto verwendet. Ergebnis im Ausführungsprotokoll dieser Umsetzung.
+- **23 Updateprüfungen bestanden:** bestehende FakeHttp-Fälle plus Cache-/Besitzerprüfungen, gesperrte Dateien, abgebrochene Downloads, Altbestände und übergebene Pakete. Kein Installer gestartet; Ergebnis im Ausführungsprotokoll dieser Umsetzung.
+- **28 JavaScript-Prüfungen bestanden**, einschließlich echter Testserver-Builds ohne vorhandenes Bundle, nach Quelländerung und mit fehlerhaften Quellen. Nachweis: `artifacts/review-logic-checks.log`.
+- **70 Edge-Oberflächentests bestanden**, keine Fehler, Wiederholungen oder ausgelassenen Fälle. Enthalten sind 15 neue Review-Regressionen für Speichern, Übergänge, Dialogschutz, Referenzansicht, Sammlung, Snapshotabruf, Titelabgleich, Einstellungen und HTML-Zwischenablage. Nachweis: `artifacts/review-ui-final.json`. Der vollständige Lauf endete mit Exit 0 und ohne verbleibenden eigenen Testserver.
+- TypeScript-Prüfung, Web-Build und .NET-Release-Publish bestanden (`artifacts/review-final-build.log`). Die gebaute lokale Testkopie liegt unter `artifacts/review/app`; ihr Webbundle stimmt per SHA-256 mit dem geprüften Bundle überein. Lizenzgenerierung bestätigt **71 Komponenten**.
+
+**Native Prüfgrenze:** Sieben native Durchläufe bestanden während der Umsetzung, einschließlich fünf Starts mit ungültigen Einstellungen, beschädigtem Kandidatenprojekt, Sicherungsfehler, freigegebenen Dateisperren, Schreibschutz, atomarer Einstellungsspeicherung und vollständigem Neustart (`artifacts/review-native-initial.json`). Die Wiederholung nach dem letzten Build wurde bereits beim Start der EXE von Windows Code Integrity blockiert, Ereignisse **3033/3077**. Daher ist die native Gesamtabnahme dieses letzten Builds **nicht bestätigt**. Aktueller Status: `artifacts/review-native.json`; Fehler und Windows-Nachweise: `artifacts/review-native.log`, `artifacts/review-native-codeintegrity.json`. Sicherheitsrichtlinien wurden nicht verändert. Frühere erfolgreiche Durchläufe ersetzen diese offene Abnahme nicht.
+
+Wiederholbare Einstiegspunkte: `npm test`, `node node_modules/@playwright/test/cli.js test`, die vorhandenen .NET-Checkprojekte mit `-c Release` (Updatefälle über `--updates`) und `node scripts/test-review-native.mjs`. Native Tests verwenden ausschließlich eigene Projekte und Einstellungen unter `.work/review-native`.
+
+
 ## Zusätzliche Testversion auf testing, 20. September 2026
 
 `0.1.0-alpha.6+testing.usability`, **Testversion Schreibansicht & Zeitstrahl**. Kein Installer und keine Veröffentlichung. Anleitung: [TESTVERSION-BEDIENUNG.md](TESTVERSION-BEDIENUNG.md).

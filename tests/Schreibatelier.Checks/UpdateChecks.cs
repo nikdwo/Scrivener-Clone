@@ -47,6 +47,7 @@ static class UpdateChecks
         await Reject(async () => await pending, "Cancellation stops pending download");
         handler.Wait = false;
         await updates.Download(_ => { }); Check(true, "A cancelled download can be retried");
+        await CacheChecks(Path.Combine(root, "cache"), metadata, payload, Check);
         if (live)
         {
             using var remote = new GitHubUpdates(new HttpClient(), root, "0.1.0-alpha.1", false);
@@ -56,6 +57,48 @@ static class UpdateChecks
             Check(verified.Name == publicFile, "Public installer downloads anonymously and passes the SHA-256 check");
         }
         Console.WriteLine($"{count} update checks passed.");
+    }
+
+    private static async Task CacheChecks(string root, string metadata, byte[] payload, Action<bool, string> check)
+    {
+        var firstHttp = new FakeHttp(metadata, payload);
+        using var first = new GitHubUpdates(new HttpClient(firstHttp), root, "0.1.0-alpha.2", false);
+        using var second = new GitHubUpdates(new HttpClient(new FakeHttp(metadata, payload)), root, "0.1.0-alpha.2", false);
+        await first.Check(); await second.Check();
+        var held = await first.Download(_ => { });
+        var downloads = new List<string>();
+        for (var i = 0; i < 4; i++) { downloads.Add(await second.Download(_ => { })); await Task.Delay(20); }
+        await second.Check();
+        check(File.Exists(held), "Other updater instances preserve a selected package");
+        check(!File.Exists(downloads[0]) && !File.Exists(downloads[1]) && downloads.Skip(2).All(File.Exists), "Cache retains only the two newest inactive complete packages");
+        await first.Check();
+        check(!File.Exists(held), "Released old selection becomes eligible for cache cleanup");
+
+        var handedOff = await first.Download(_ => { });
+        first.LaunchDownload(_ => { });
+        await first.Check();
+        var failedLaunch = await second.Download(_ => { });
+        try { second.LaunchDownload(_ => throw new IOException("Synthetic launch failure")); throw new Exception("Launch failure ignored"); }
+        catch (IOException) { }
+        var locked = await first.Download(_ => { }); await first.Check();
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            for (var i = 0; i < 4; i++) { await second.Download(_ => { }); await Task.Delay(20); }
+            await second.Check();
+            check(File.Exists(locked), "A package locked by another process does not break cleanup");
+        }
+        await second.Check();
+        check(!File.Exists(locked) && !File.Exists(failedLaunch), "Unlocked packages and failed handoffs are cleaned later");
+        check(File.Exists(handedOff), "Handed-off package survives cache pressure after owner releases it");
+
+        var legacy = Path.Combine(root, "Updates", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(legacy);
+        var legacyFile = Path.Combine(legacy, "legacy.zip"); File.WriteAllText(legacyFile, "unmarked existing download");
+        firstHttp.Wait = true;
+        var pending = first.Download(_ => { });
+        await second.Check(); first.Cancel();
+        try { await pending; throw new Exception("Pending download unexpectedly succeeded"); } catch (IOException) { }
+        check(File.Exists(legacyFile), "Unmarked legacy downloads are preserved");
+        check(!Directory.EnumerateFiles(root, "*.partial", SearchOption.AllDirectories).Any(), "Cancelled concurrent download removes its incomplete bytes");
     }
 
     private sealed class FakeHttp(string json, byte[] payload) : HttpMessageHandler

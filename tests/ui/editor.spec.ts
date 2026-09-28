@@ -170,7 +170,8 @@ test.beforeEach(async({page})=>{
           const d=docs.find(d=>d.id===args.id);if(!args.deleted&&docs.find(p=>p.id===d.parentId)?.deleted)throw new Error('Bitte zuerst den übergeordneten Ordner wiederherstellen.');
           const visit=(id:string)=>{const item=docs.find(d=>d.id===id);item.deleted=args.deleted;item.revision++;for(const child of docs.filter(d=>d.parentId===id))visit(child.id)};visit(d.id);result=clone(project);
         }
-        else if(action==='snapshots')result=clone(snapshots.filter(s=>s.documentId===args.id));
+        else if(action==='snapshots')result=snapshots.filter(s=>s.documentId===args.id).map(({id,documentId,title,created})=>({id,documentId,title,created}));
+        else if(action==='getSnapshot'){result=clone(snapshots.find(s=>s.documentId===args.id&&s.id===args.snapshotId));if(!result)throw new Error('Textstand nicht gefunden.');}
         else if(action==='settings'){await new Promise(r=>setTimeout(r,(window as any).__test.settingsDelay??0));if(args.projectId!==project.id)throw new Error('Das Projekt wurde gewechselt.');if(project.readOnly||(window as any).__test.failSettings)throw new Error('Einstellungen konnten nicht gespeichert werden.');if(args.baseTitle===undefined||args.title!==args.baseTitle)project.title=args.title;
           if(args.baseSettings){for(const key of new Set([...Object.keys(args.settings),...Object.keys(args.baseSettings)])){if(JSON.stringify(args.settings[key])===JSON.stringify(args.baseSettings[key]))continue;if(JSON.stringify(project.settings[key])!==JSON.stringify(args.baseSettings[key])&&JSON.stringify(project.settings[key])!==JSON.stringify(args.settings[key]))throw new Error('Diese Projekteinstellung wurde zwischenzeitlich geändert.');if(key in args.settings)project.settings[key]=clone(args.settings[key]);else delete project.settings[key]}}
           else project.settings=args.settings;result=clone(project)}

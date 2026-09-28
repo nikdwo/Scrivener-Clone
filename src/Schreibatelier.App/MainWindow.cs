@@ -20,6 +20,7 @@ public sealed class MainWindow : Window
 {
     private readonly WebView2 web = new();
     private readonly ConversionService converter;
+    private readonly string? defaultPandoc, defaultTypst;
     private readonly ProofreadingService proof;
     private readonly RecentProjects recentProjects;
     private readonly GitHubUpdates updates;
@@ -49,13 +50,13 @@ public sealed class MainWindow : Window
         updates = new(new HttpClient { Timeout = Timeout.InfiniteTimeSpan }, dataDirectory,
             typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion,
             File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.txt")));
-        var prefsFile = Path.Combine(dataDirectory, "preferences.json");
-        if (File.Exists(prefsFile)) try { preferences = JsonNode.Parse(File.ReadAllText(prefsFile))!.AsObject(); } catch (JsonException) { /* A broken preferences file never prevents opening a project. */ }
+        try { preferences = ValidatePreferences(JsonNode.Parse(File.ReadAllText(Path.Combine(dataDirectory, "preferences.json"))) as JsonObject ?? new(), tolerateInvalid: true); }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException) { /* Keep the original file; defaults allow project access. */ }
         converter = new(FindTools());
+        defaultPandoc = converter.Pandoc; defaultTypst = converter.Typst;
         var bundledProof = Path.Combine(AppContext.BaseDirectory, "Proofreading");
         proof = new(dataDirectory, Directory.Exists(bundledProof) ? bundledProof : FindTools());
-        if (preferences["pandoc"] is JsonValue p) converter.Pandoc = p.GetValue<string>();
-        if (preferences["typst"] is JsonValue t) converter.Typst = t.GetValue<string>();
+        ApplyConverterPreferences();
         Title = AppTitle; Width = 1460; Height = 960; MinWidth = 760; MinHeight = 480;
         Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/Schreibatelier.ico"));
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -82,6 +83,47 @@ public sealed class MainWindow : Window
             for (var folder = new DirectoryInfo(root); folder is not null; folder = folder.Parent)
             { var tools = Path.Combine(folder.FullName, ".tools"); if (Directory.Exists(tools)) return tools; }
         return null;
+    }
+    private static JsonObject ValidatePreferences(JsonObject input, bool tolerateInvalid = false)
+    {
+        var result = input.DeepClone().AsObject();
+        foreach (var key in new[] { "pandoc", "typst", "theme", "checkUpdatesAtStartup", "inspectorWidth" })
+        {
+            if (!result.ContainsKey(key)) continue;
+            var value = result[key] as JsonValue;
+            var valid = key switch
+            {
+                "pandoc" or "typst" => value is not null && value.TryGetValue<string>(out _),
+                "theme" => value is not null && value.TryGetValue<string>(out var theme) && theme is "light" or "dark",
+                "checkUpdatesAtStartup" => value is not null && value.TryGetValue<bool>(out _),
+                _ => value is not null && value.TryGetValue<double>(out var width) && double.IsFinite(width)
+            };
+            if (valid) continue;
+            if (!tolerateInvalid) throw new InvalidDataException("Ungültige Einstellung: " + key);
+            result.Remove(key);
+        }
+        return result;
+    }
+    private void ApplyConverterPreferences()
+    {
+        var pandoc = preferences["pandoc"]?.GetValue<string>();
+        var typst = preferences["typst"]?.GetValue<string>();
+        converter.Pandoc = string.IsNullOrWhiteSpace(pandoc) ? defaultPandoc : pandoc;
+        converter.Typst = string.IsNullOrWhiteSpace(typst) ? defaultTypst : typst;
+    }
+    private void SavePreferences(JsonObject input)
+    {
+        var next = ValidatePreferences(input);
+        var file = Path.Combine(dataDirectory, "preferences.json");
+        var staged = file + "." + Model.Id() + ".tmp";
+        try { File.WriteAllText(staged, next.ToJsonString()); File.Move(staged, file, true); }
+        finally
+        {
+            try { if (File.Exists(staged)) File.Delete(staged); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Debug.WriteLine(ex.Message); }
+        }
+        preferences = next;
+        ApplyConverterPreferences();
     }
     private async Task Initialize()
     {
@@ -123,8 +165,7 @@ public sealed class MainWindow : Window
         {
             try
             {
-                var assetId = new Uri(uri).AbsolutePath.Trim('/');
-                if (assetId.Length != 32 || !assetId.All(Uri.IsHexDigit)) throw new InvalidDataException();
+                var assetId = Model.AssetId(uri);
                 var (info, bytes) = store.GetAsset(assetId);
                 var mime = ConversionService.Mime(info.Name);
                 var headers = "Content-Type: " + mime + "\r\nAccess-Control-Allow-Origin: " + Origin.TrimEnd('/') + "\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: " + (mime == "application/pdf" ? "" : "sandbox; ") + "default-src 'none'; style-src 'unsafe-inline'; img-src data:\r\n";
@@ -136,13 +177,15 @@ public sealed class MainWindow : Window
     }
     private void Send(object data) { if (!closed && web.CoreWebView2 is not null) web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(data, Model.Json)); }
     private ProjectStore Store => store ?? throw new InvalidOperationException("Bitte zuerst ein Projekt öffnen.");
-    private void Switch(ProjectStore next)
+    private ProjectInfo Switch(ProjectStore next)
     {
-        try { if (store is not null && !store.ReadOnly) store.Backup(); if (!next.ReadOnly) next.Backup(); }
+        ProjectInfo project;
+        try { project = next.GetProject(); if (store is not null && !store.ReadOnly) store.Backup(); if (!next.ReadOnly) next.Backup(); }
         catch { next.Dispose(); throw; }
-        store?.Dispose(); store = next; var project = Store.GetProject(); Title = project.Title + " – " + AppTitle + (Store.ReadOnly ? " (schreibgeschützt)" : "");
+        store?.Dispose(); store = next; Title = project.Title + " – " + AppTitle + (Store.ReadOnly ? " (schreibgeschützt)" : "");
         try { recentProjects.Remember(project.Title, Store.FilePath); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Debug.WriteLine("Projekt geöffnet, aber Öffnungshistorie nicht gespeichert: " + ex.Message); }
+        return project;
     }
     private void OnClosing(object? sender, CancelEventArgs e)
     {
@@ -176,6 +219,7 @@ public sealed class MainWindow : Window
                 "search" => Store.Search(Str(a, "query")),
                 "history" => Store.History(),
                 "snapshots" => Store.Snapshots(Str(a, "id")),
+                "getSnapshot" => Store.GetSnapshot(Str(a, "id"), Str(a, "snapshotId")),
                 "snapshot" => Store.Snapshot(Str(a, "id"), Str(a, "title")),
                 "backup" => Store.Backup(),
                 _ => await Other(action, a)
@@ -196,36 +240,34 @@ public sealed class MainWindow : Window
                 if (updates.Portable) throw new InvalidOperationException("Bitte das portable ZIP im Downloadordner verwenden.");
                 if (integrationTest) throw new InvalidOperationException("Installer werden im Integrationstest nicht gestartet.");
                 if (store is not null && !store.ReadOnly) store.Backup();
-                using (var installer = updates.OpenVerifiedDownload())
-                    Process.Start(new ProcessStartInfo(installer.Name) { UseShellExecute = true });
+                updates.LaunchDownload(path => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }));
                 allowClose = true; _ = Dispatcher.BeginInvoke(Close); return true;
             case "updateShowFile":
-                using (var package = updates.OpenVerifiedDownload())
-                    Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + package.Name + "\"") { UseShellExecute = true });
+                updates.LaunchDownload(path => Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"") { UseShellExecute = true }));
                 return true;
             case "proofStatus": return proof.Status();
             case "proofCheck": return await proof.Check(a);
             case "proofCancel": proof.Cancel(); return true;
             case "proofPremiumConnect": await proof.ConnectPremium(Str(a, "username"), Str(a, "key")); return true;
-            case "proofPremiumDisconnect": proof.DisconnectPremium(); return true;
+            case "proofPremiumDisconnect": await proof.DisconnectPremium(); return true;
             case "proofCodexStatus": return await proof.CodexStatus();
             case "proofCodexLogin": return await proof.CodexLogin();
             case "proofCodexLogout": await proof.CodexLogout(); return true;
             case "new":
                 var create = new SaveFileDialog { Filter = ProjectFilter, FileName = "Mein Manuskript.schreibprojekt", OverwritePrompt = false };
                 if (create.ShowDialog(this) != true) return null;
-                Switch(ProjectStore.Create(create.FileName, Path.GetFileNameWithoutExtension(create.FileName), BackupRoot)); return Store.GetProject();
+                return Switch(ProjectStore.Create(create.FileName, Path.GetFileNameWithoutExtension(create.FileName), BackupRoot));
             case "open":
                 var open = new OpenFileDialog { Filter = ProjectFilter };
                 if (open.ShowDialog(this) != true) return null;
                 if (store is not null && string.Equals(Path.GetFullPath(open.FileName), Store.FilePath, StringComparison.OrdinalIgnoreCase)) return Store.GetProject();
-                Switch(new ProjectStore(open.FileName, BackupRoot)); return Store.GetProject();
+                return Switch(new ProjectStore(open.FileName, BackupRoot));
             case "openRecent":
                 var recent = recentProjects.Read().FirstOrDefault(p => string.Equals(p.FilePath, Str(a, "path"), StringComparison.OrdinalIgnoreCase))
                     ?? throw new InvalidDataException("Dieses Projekt steht nicht mehr in der Liste. Bitte über „Projekt öffnen“ auswählen.");
                 if (!File.Exists(recent.FilePath)) throw new FileNotFoundException("Das Projekt wurde verschoben, gelöscht oder das Laufwerk ist nicht verbunden. Bitte über „Projekt öffnen“ neu auswählen.");
                 if (store is not null && string.Equals(recent.FilePath, Store.FilePath, StringComparison.OrdinalIgnoreCase)) return Store.GetProject();
-                Switch(new ProjectStore(recent.FilePath, BackupRoot)); return Store.GetProject();
+                return Switch(new ProjectStore(recent.FilePath, BackupRoot));
             case "saveCopy":
                 var copy = new SaveFileDialog { Filter = ProjectFilter, FileName = Store.GetProject().Title + " – Kopie.schreibprojekt", OverwritePrompt = false };
                 if (copy.ShowDialog(this) == true) { Store.SaveCopy(copy.FileName); return copy.FileName; }
@@ -236,7 +278,7 @@ public sealed class MainWindow : Window
                 var restored = new SaveFileDialog { Filter = ProjectFilter, FileName = "Wiederhergestellt.schreibprojekt", OverwritePrompt = false };
                 if (restored.ShowDialog(this) != true) return null;
                 using (var source = new ProjectStore(backup.FileName, BackupRoot)) source.SaveCopy(restored.FileName);
-                Switch(new ProjectStore(restored.FileName, BackupRoot)); return Store.GetProject();
+                return Switch(new ProjectStore(restored.FileName, BackupRoot));
             case "move": Store.Move(Str(a, "id"), Str(a, "parent"), a["index"]!.GetValue<int>()); return Store.GetProject();
             case "split": Store.Split(Str(a, "id"), a["revision"]!.GetValue<long>(), Str(a, "firstBody"), Str(a, "secondBody"), Str(a, "title")); return Store.GetProject();
             case "merge": Store.Merge(Str(a, "firstId"), Str(a, "secondId"), a["firstRevision"]!.GetValue<long>(), a["secondRevision"]!.GetValue<long>()); return Store.GetProject();
@@ -269,7 +311,7 @@ public sealed class MainWindow : Window
                     try
                     {
                         if (Path.GetExtension(path).Equals(".opml", StringComparison.OrdinalIgnoreCase)) count += ConversionService.ImportOutline(path, Store, Str(a, "parent"));
-                        else { var imported = await converter.Import(path, Store); Store.AddDocument(Str(a, "parent"), Path.GetFileNameWithoutExtension(path), Path.GetExtension(path) == ".fountain" ? "script" : "text", imported.Body); notes.AddRange(imported.Warnings); count++; }
+                        else { var imported = await converter.Import(path, Store, Str(a, "parent")); notes.AddRange(imported.Warnings); count++; }
                     }
                     catch (Exception ex) when (ex is IOException or InvalidDataException or System.Xml.XmlException) { notes.Add(Path.GetFileName(path) + ": nicht importiert – " + ex.Message); }
                 }
@@ -287,10 +329,7 @@ public sealed class MainWindow : Window
                 if (export.ShowDialog(this) != true) return null;
                 var warnings = await converter.Export(Store, options, export.FileName); return new { path = export.FileName, warnings };
             case "preferences":
-                preferences = a.DeepClone().AsObject();
-                File.WriteAllText(Path.Combine(dataDirectory, "preferences.json"), preferences.ToJsonString());
-                if (preferences["pandoc"] is JsonValue pp && !string.IsNullOrWhiteSpace(pp.GetValue<string>())) converter.Pandoc = pp.GetValue<string>();
-                if (preferences["typst"] is JsonValue tt && !string.IsNullOrWhiteSpace(tt.GetValue<string>())) converter.Typst = tt.GetValue<string>();
+                SavePreferences(a);
                 return true;
             case "licenses":
                 var licenses = Path.Combine(AppContext.BaseDirectory, "THIRD_PARTY_NOTICES.txt");

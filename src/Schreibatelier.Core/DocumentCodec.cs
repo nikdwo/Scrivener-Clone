@@ -61,7 +61,7 @@ public static class DocumentCodec
             if (n is null) continue;
             var type = S(n["type"]); var a = n["attrs"];
             if (type == "hardBreak") { result.Add(P("LineBreak")); continue; }
-            if (type == "image") { result.Add(P("Image", new JsonArray(Attr(), new JsonArray(P("Str", JsonValue.Create(S(a?["alt"])))), new JsonArray(assets(S(a?["src"]).Split('/').Last()), S(a?["title"]))))); continue; }
+            if (type == "image") { result.Add(P("Image", new JsonArray(Attr(), new JsonArray(P("Str", JsonValue.Create(S(a?["alt"])))), new JsonArray(assets(Model.AssetId(S(a?["src"]))), S(a?["title"]))))); continue; }
             if (type == "footnote") { result.Add(P("Note", new JsonArray(P("Para", ToInlines(new JsonArray(new JsonObject { ["type"] = "text", ["text"] = S(a?["text"]) }), assets, false))))); continue; }
             if (type != "text") continue;
             JsonArray current = new();
@@ -138,6 +138,8 @@ public static class DocumentCodec
             else if (t is "Strong" or "Emph" or "Strikeout" or "Underline" or "Superscript" or "Subscript" or "Span" or "Link" or "Quoted" or "SmallCaps" or "Cite")
             {
                 var inner = t is "Link" or "Span" or "Quoted" or "Cite" ? c![1]!.AsArray() : c!.AsArray(); var children = FromInlines(inner, image, warnings);
+                var quote = t == "Quoted" ? S(c![0]?["t"]) == "SingleQuote" ? "'" : "\"" : null;
+                if (quote is not null) result.Add(new JsonObject { ["type"] = "text", ["text"] = quote });
                 var markType = t switch { "Strong" => "bold", "Emph" => "italic", "Strikeout" => "strike", "Underline" => "underline", "Superscript" => "superscript", "Subscript" => "subscript", "Link" => "link", _ => null };
                 foreach (var child in children)
                 {
@@ -151,6 +153,7 @@ public static class DocumentCodec
                     }
                     result.Add(clone);
                 }
+                if (quote is not null) result.Add(new JsonObject { ["type"] = "text", ["text"] = quote });
             }
             else warnings.Add("Nicht übernommenes Inline-Element: " + t);
         }

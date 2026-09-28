@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Schreibatelier.App;
 using Schreibatelier.Core;
 
+if (args.FirstOrDefault() == "--fake-codex") { await ProofRegressionChecks.RunServer(args[1], args[2]); return; }
 var root = Path.GetFullPath(args.FirstOrDefault() ?? Environment.CurrentDirectory);
 var data = Path.Combine(root, ".work", "proof-checks"); Directory.CreateDirectory(data);
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); Console.WriteLine("OK " + message); }
@@ -28,6 +29,8 @@ Check(parsed.Length == 2 && parsed[0].Original == "Feler" && parsed[1].Original 
 var ai = CodexProofreader.ParseAnswer(blocks, """{"issues":[{"block":0,"original":"Feler","replacement":"Fehler","message":"Schreibweise","category":"spelling"},{"block":0,"original":"Erfunden","replacement":"Nein","message":"Ungültig","category":"grammar"}]}""");
 Check(ai.Length == 1 && ai[0].Offset == 15, "KI replacement must match the original text");
 Check(CodexProofreader.ParseAnswer([new(0, "Wort Wort")], """{"issues":[{"block":0,"original":"Wort","replacement":"Ort","message":"Mehrdeutig","category":"spelling"}]}""").Length == 0, "Ambiguous KI corrections are rejected");
+await ProofRegressionChecks.Run(data, Check);
+if (args.Contains("--regressions-only")) return;
 using var service = new ProofreadingService(data, Path.Combine(root, ".tools"));
 var request = new JsonObject { ["engine"] = "local", ["language"] = "de-DE", ["blocks"] = JsonSerializer.SerializeToNode(new[] { new ProofBlock(0, "Das ist ein Feler. Ich habe ein Apfel gegessen.") }, Model.Json) };
 var result = JsonSerializer.SerializeToNode(await service.Check(request), Model.Json)!;
