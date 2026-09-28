@@ -63,6 +63,10 @@ async function run(label,inspect) {
   }
 }
 
+const invalidUnicodePreferences=['\ud800','\udc00'].flatMap(value=>[
+  {[value]:1},{future:{[value]:1}},{future:value},{future:{text:value}},{future:[value]},{future:[{[value]:1}]},
+]);
+const futurePreferences={keep:true,'Grüße 🖋️':{text:'漢字 und 😀',values:['ä','😀']}};
 for(const [invalid,expected] of [
   ['null',{}],['[]',{}],['42',{}],['{broken',{}],
   ['{"pandoc":42,"typst":false,"theme":{},"inspectorWidth":"wide","checkUpdatesAtStartup":1,"future":{"keep":true}}',{future:{keep:true}}],
@@ -70,12 +74,13 @@ for(const [invalid,expected] of [
   ['{"theme":"dark","future":{"keep":true,"keep":false}}',{}],
   ['{"pandoc":"\\ud800","typst":"\\udc00","theme":"dark","inspectorWidth":320,"checkUpdatesAtStartup":false,"future":{"keep":"\\ud83d\\ude00"}}',{theme:'dark',inspectorWidth:320,checkUpdatesAtStartup:false,future:{keep:'😀'}}],
   ['{"theme":"\\ud800","pandoc":"","typst":"","future":{"keep":true}}',{pandoc:'',typst:'',future:{keep:true}}],
+  ...invalidUnicodePreferences.map(invalid=>[JSON.stringify({theme:'dark',...invalid}),{}]),
 ]) {
-  await writeFile(prefsFile,invalid);
+  const original=Buffer.from(invalid,'utf8');await writeFile(prefsFile,original);
   await run('Startup tolerates preferences '+invalid,async page=>{
     expect((await bridge(page,'state')).filePath).toBe(fixture.a);
     const ready=await bridge(page,'ready');expect(ready.preferences).toEqual(expected);
-    expect(await readFile(prefsFile,'utf8')).toBe(invalid);
+    expect(await readFile(prefsFile)).toEqual(original);
   });
 }
 
@@ -99,14 +104,14 @@ await run('Failed project switch preserves the active store; settings commit ato
     expect((await bridge(page,'openRecent',{path:fixture.a})).filePath).toBe(fixture.a);
   } finally { await chmod(fixture.c,0o666); }
 
-  const preferences={theme:'dark',inspectorWidth:320,checkUpdatesAtStartup:false,future:{keep:true},pandoc:'',typst:''};
+  const preferences={theme:'dark',inspectorWidth:320,checkUpdatesAtStartup:false,future:futurePreferences,pandoc:'',typst:''};
   await bridge(page,'preferences',preferences);
   expect(JSON.parse(await readFile(prefsFile,'utf8'))).toEqual(preferences);
-  const savedTools=(await bridge(page,'ready')).tools;
-  for(const invalid of [{pandoc:17},{pandoc:'\ud800'},{typst:'\udc00'},{theme:'\ud800'}]) {
-    await expect(bridge(page,'preferences',{...preferences,...invalid})).rejects.toThrow();
+  const savedTools=(await bridge(page,'ready')).tools,savedBytes=await readFile(prefsFile);
+  for(const invalid of [{pandoc:17},{pandoc:'\ud800'},{typst:'\udc00'},{theme:'\ud800'},...invalidUnicodePreferences]) {
+    await expect(bridge(page,'preferences',{...preferences,...invalid})).rejects.toThrow(/Ungültige Einstellung/);
     const ready=await bridge(page,'ready');expect(ready.preferences).toEqual(preferences);expect(ready.tools).toEqual(savedTools);
-    expect(JSON.parse(await readFile(prefsFile,'utf8'))).toEqual(preferences);
+    expect(await readFile(prefsFile)).toEqual(savedBytes);
   }
   const readyFile=path.join(directory,'preferences-lock.ready');
   const holder=spawn(checks,['--native-review-lock-file',prefsFile,readyFile],{cwd:root,windowsHide:true,stdio:['pipe','ignore','pipe']});
@@ -125,7 +130,7 @@ await run('Failed project switch preserves the active store; settings commit ato
 });
 await run('Project and valid preferences survive complete native restart',async page=>{
   expect((await bridge(page,'document',{id:fixture.document})).body).toBe(finalBody);
-  expect((await bridge(page,'ready')).preferences.future).toEqual({keep:true});
+  expect((await bridge(page,'ready')).preferences.future).toEqual(futurePreferences);
   await expect(page.locator('body')).toHaveClass(/dark/);
 });
 await mkdir(path.join(root,'artifacts'),{recursive:true});

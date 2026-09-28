@@ -51,7 +51,7 @@ public sealed class MainWindow : Window
             typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion,
             File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.txt")));
         try { preferences = ValidatePreferences(JsonNode.Parse(File.ReadAllText(Path.Combine(dataDirectory, "preferences.json")), documentOptions: new() { AllowDuplicateProperties = false }) as JsonObject ?? new(), tolerateInvalid: true); }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException) { /* Keep the original file; defaults allow project access. */ }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException or UnauthorizedAccessException) { /* Keep the original file; defaults allow project access. */ }
         converter = new(FindTools());
         defaultPandoc = converter.Pandoc; defaultTypst = converter.Typst;
         var bundledProof = Path.Combine(AppContext.BaseDirectory, "Proofreading");
@@ -86,28 +86,37 @@ public sealed class MainWindow : Window
     }
     private static JsonObject ValidatePreferences(JsonObject input, bool tolerateInvalid = false)
     {
-        var result = input.DeepClone().AsObject();
-        foreach (var key in new[] { "pandoc", "typst", "theme", "checkUpdatesAtStartup", "inspectorWidth" })
+        try
         {
-            if (!result.ContainsKey(key)) continue;
-            var value = result[key] as JsonValue;
-            var valid = false;
-            try
+            var result = input.DeepClone().AsObject();
+            foreach (var key in new[] { "pandoc", "typst", "theme", "checkUpdatesAtStartup", "inspectorWidth" })
             {
-                valid = key switch
+                if (!result.ContainsKey(key)) continue;
+                var value = result[key] as JsonValue;
+                var valid = false;
+                try
                 {
-                    "pandoc" or "typst" => value is not null && value.TryGetValue<string>(out _),
-                    "theme" => value is not null && value.TryGetValue<string>(out var theme) && theme is "light" or "dark",
-                    "checkUpdatesAtStartup" => value is not null && value.TryGetValue<bool>(out _),
-                    _ => value is not null && value.TryGetValue<double>(out var width) && double.IsFinite(width)
-                };
+                    valid = key switch
+                    {
+                        "pandoc" or "typst" => value is not null && value.TryGetValue<string>(out _),
+                        "theme" => value is not null && value.TryGetValue<string>(out var theme) && theme is "light" or "dark",
+                        "checkUpdatesAtStartup" => value is not null && value.TryGetValue<bool>(out _),
+                        _ => value is not null && value.TryGetValue<double>(out var width) && double.IsFinite(width)
+                    };
+                }
+                catch (InvalidOperationException) { /* A known JSON string can contain an unpaired UTF-16 surrogate. */ }
+                if (valid) continue;
+                if (!tolerateInvalid) throw new InvalidDataException("Ungültige Einstellung: " + key);
+                result.Remove(key);
             }
-            catch (InvalidOperationException) { /* A known JSON string can contain an unpaired UTF-16 surrogate. */ }
-            if (valid) continue;
-            if (!tolerateInvalid) throw new InvalidDataException("Ungültige Einstellung: " + key);
-            result.Remove(key);
+            _ = result.ToJsonString(); // Unknown fields must also survive saving and the initial ready response.
+            return result;
         }
-        return result;
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            if (tolerateInvalid) return new();
+            throw new InvalidDataException("Ungültige Einstellungen: Die JSON-Daten enthalten ungültige Zeichen und wurden nicht gespeichert.", ex);
+        }
     }
     private void ApplyConverterPreferences()
     {

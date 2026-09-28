@@ -1,5 +1,17 @@
 # Validierung – Alpha 6 (0.1.0-alpha.6)
 
+## Abschluss F13: Unicode in unbekannten Einstellungen, 28. September 2026
+
+Ausgehend von `7796b3d` auf `codex/codereview-fix`. Ungültige Unicode-Eigenschaftsnamen werden beim Laden abgefangen. Nach der bisherigen Prüfung bekannter Felder wird das gesamte verbleibende Objekt auf Serialisierbarkeit geprüft, einschließlich unbekannter und verschachtelter Felder sowie Arrays. Bei einem solchen Gesamtfehler gelten beim Laden Standards; Speichern wird mit verständlicher Meldung vor jedem Schreibzugriff abgewiesen. Ungültige bekannte Werte werden beim Laden weiterhin einzeln entfernt, gültige unbekannte Felder bleiben erhalten. Originaldateien werden beim Laden nicht repariert.
+
+- **Fehler zuerst nachgewiesen:** Der erweiterte native Harness bestand am unveränderten Programmstand die neun bisherigen Startfälle und erreichte beim ersten unbekannten Surrogat-Schlüssel keine WebView2-Oberfläche mehr (`artifacts/f13-unicode-native-red.log`, `artifacts/f13-unicode-native-red.json`). Die zusätzliche Probe des bereits vorhandenen, exakt extrahierten Ladecodes bestätigte unter .NET 10 den Parsefehler sowie Serialisierungsfehler für unbekannte Werte und Arrayelemente (`artifacts/f13-unicode-source-red.log`); diese Probe ist kein eigener nativer Startnachweis.
+- **Release-Build und Publish bestanden:** geprüfte Anwendung unter `artifacts/f13-unicode/app`; Protokoll `artifacts/f13-unicode-build.log`.
+- **23 native WPF/WebView2-Durchläufe bestanden:** 21 Einstellungsstarts, darunter zwölf neue Fälle mit einzelnen hohen/niedrigen Surrogaten in direkten, verschachtelten und in Arrays enthaltenen Schlüsseln/Werten; außerdem Storewechsel/atomare Einstellungen und vollständiger Neustart. Alle geladenen Ausgangsdateien blieben bytegleich. 16 abgewiesene Speicheranfragen erhielten Datei, aktive Einstellungen und Konverterpfade. Gültige unbekannte Unicode-Schlüssel und Werte einschließlich Emoji überstanden Speichern und Neustart. Ergebnisse: `artifacts/f13-unicode-native-green.json`, `artifacts/f13-unicode-native-green.log`; isolierte Daten unter `.work/review-native/2ef18449-8521-4918-bced-58c28535dfc7`.
+- **Vier vorhandene UI-Einstellungstests bestanden**, ohne Fehler, ausgelassene Fälle oder Wiederholungen: die drei F13-Regressionen und der gemeinsame Ansichts-/Inspektor-/Farbschematest. Der Testserver erzeugte das Webbundle aus aktuellen Quellen; sein SHA-256 stimmt mit dem nativ geprüften Bundle überein. Ergebnisse: `artifacts/f13-unicode-ui.json`, `artifacts/f13-unicode-ui.log`.
+- **Prozessende bestätigt:** keine zugeordneten Testprozesse oder Testserver in der abschließenden Windows-Abfrage (`artifacts/f13-unicode-processes.json`). Die Sandbox verweigerte nur diese Prozessabfrage; sie wurde im normalen Windows-Benutzerkontext erfolgreich wiederholt. Keine native Ausführungssperre und keine Änderung von Sicherheitsrichtlinien.
+
+Die abschließende Prüfung des begrenzten Diffs ergab keinen weiteren Änderungsbedarf. F2, F8, F11, Bibliotheken, Projektformat und RPC-Verträge bleiben unverändert. Die früheren vollständigen Testsuiten wurden für diesen begrenzten F13-Fix nicht erneut ausgeführt; keine Anbieteranmeldung, Installer-Ausführung oder Veröffentlichung.
+
 ## Restbefunde der zweiten Review, 28. September 2026
 
 F2, F13, F11 und F8 sind ausgehend von `acf0552` auf `codex/codereview-fix` korrigiert. Projektformat, SQLite-Schema und native RPC-Verträge bleiben unverändert; keine neue Bibliothek.
