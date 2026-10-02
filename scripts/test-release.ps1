@@ -43,7 +43,7 @@ $portable = Join-Path $testRoot 'portable'
 Expand-Archive -LiteralPath (Join-Path $packages "Schreibatelier-$version-Portable-win-x64.zip") -DestinationPath $portable
 Check (Test-Path -LiteralPath (Join-Path $portable 'portable.txt')) 'ZIP enthält den portablen Modus'
 Check (!(Test-Path -LiteralPath (Join-Path $portable 'Data'))) 'ZIP enthält keine Benutzerdaten'
-Check ((Get-Item -LiteralPath (Join-Path $portable 'Schreibatelier.exe')).VersionInfo.ProductVersion -like "$version*") 'EXE trägt die Alpha-Version'
+Check ((Get-Item -LiteralPath (Join-Path $portable 'Schreibatelier.exe')).VersionInfo.ProductVersion -like "$version*") 'EXE trägt die Release-Version'
 NativeCheck $portable (Join-Path $testRoot 'portable-working') (Join-Path $portable 'Data')
 '{"theme":"dark","inspectorWidth":360}' | Set-Content -LiteralPath (Join-Path $portable 'Data/preferences.json') -Encoding utf8
 $resultBeforeMove = Join-Path $portable 'Data/result.json'

@@ -1,6 +1,6 @@
-Schreibatelier – Alpha 6 (0.1.0-alpha.6)
+Schreibatelier – Beta 1 (0.2.0-beta.1)
 
-Dies ist eine frühe Testversion. Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger.
+Dies ist eine öffentliche Beta zum Erproben und für Rückmeldungen. Verwende Kopien deiner Manuskripte und sichere wichtige Texte zusätzlich auf einem anderen Datenträger.
 
 Die Anwendung wird für dein Windows-Benutzerkonto installiert. Die .NET-Laufzeit ist enthalten. Microsoft Edge WebView2 Runtime muss vorhanden sein; falls sie fehlt, bietet die Anwendung die offizielle Microsoft-Downloadseite an.
 
@@ -8,8 +8,8 @@ Pandoc und Typst für erweiterte Import-/Exportformate werden separat eingericht
 
 Die lokale deutsche Sprachprüfung einschließlich Java-Laufzeit ist enthalten. LanguageTool Premium und ChatGPT sind optional; Online-Prüfungen senden Text erst nach deinem ausdrücklichen Start. ChatGPT benötigt die separat installierte Codex CLI und eine eigene Anmeldung.
 
-Neu in Alpha 6: Beziehungsnetz für Figuren, Orte und Gegenstände unter Ansicht. Verbindungen, Notizen und Kartenpositionen werden lokal gespeichert. Stilanalyse und Zeitstrahl bleiben enthalten.
+Neu in Beta 1: A4-Schreibansicht, Ordnerübersicht, minutengenaue Zeitstrahlbearbeitung sowie Korrekturen für Speicherung, Projektwechsel, Import/Export, Einstellungen und Sprachprüfung. Beziehungsnetz, Karten und lokale Stilanalyse bleiben enthalten.
 
 Eine Deinstallation entfernt die Programmdateien. Eigene Projekte, Einstellungen und Sicherungen bleiben erhalten.
 
-Diese Alpha ist nicht digital signiert. Eine Prüfung auf einem zweiten Rechner steht noch aus.
+Diese Beta ist nicht digital signiert. Eine Prüfung auf einem zweiten Rechner steht noch aus.

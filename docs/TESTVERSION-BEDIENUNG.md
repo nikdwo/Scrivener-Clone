@@ -1,10 +1,10 @@
-# Testversion Schreibansicht & Zeitstrahl
+# Schreibansicht & Zeitstrahl – Beta 1
 
-Version: `0.1.0-alpha.6+testing.usability`, auf `testing`. Diese Testversion veröffentlicht keine neue Alpha-Version und erstellt keinen Installer.
+Seit `0.2.0-beta.1` sind die auf `testing` erprobte Schreibansicht und die verbesserte Zeitstrahlbedienung im regulären Beta-Paket enthalten.
 
 ## Starten
 
-Im Projektordner **Testversion Schreibansicht & Zeitstrahl.lnk** oder **Schreibatelier starten.lnk** öffnen. Nach `scripts/build.ps1 -Testing` zeigen beide auf `artifacts/Schreibatelier-testing-usability/app/Schreibatelier.exe`. Der gesamte Anwendungsordner wird benötigt.
+Die installierte **Schreibatelier Beta 1** oder die vollständig entpackte portable **Schreibatelier.exe** starten. Im Quellprojekt öffnet **Schreibatelier starten.lnk** den Release-Build. Der gesamte Anwendungsordner wird benötigt. Ein separater Entwicklungsbuild bleibt mit `scripts/build.ps1 -Testing` möglich.
 
 ## Die fünf Änderungen ausprobieren
 

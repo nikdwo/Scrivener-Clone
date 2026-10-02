@@ -34,7 +34,7 @@ public sealed class MainWindow : Window
     private const string Assets = "https://assets.schreibatelier.local/";
     private bool integrationTest;
     private bool fileOperation;
-    private static string AppTitle => "Schreibatelier – Alpha 6" + (typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Contains("+testing.") == true ? " · Testversion Schreibansicht & Zeitstrahl" : "");
+    private static string AppTitle => "Schreibatelier – Beta 1" + (typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Contains("+testing.") == true ? " · Testversion Schreibansicht & Zeitstrahl" : "");
     private string BackupRoot => Path.Combine(dataDirectory, "Backups");
 
     public MainWindow(string[] args)
@@ -159,7 +159,7 @@ public sealed class MainWindow : Window
             core.DownloadStarting += (_, e) => e.Cancel = true;
             var file = arguments.FirstOrDefault(x => x.EndsWith(".schreibprojekt", StringComparison.OrdinalIgnoreCase));
             if (file is not null) Switch(integrationTest && !File.Exists(file)
-                ? ProjectStore.Create(file, "Alpha-6-Paketprüfung", BackupRoot)
+                ? ProjectStore.Create(file, "Release-Paketprüfung", BackupRoot)
                 : new ProjectStore(file, BackupRoot));
             web.Source = new Uri(Origin + "index.html");
         }

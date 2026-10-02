@@ -65,7 +65,7 @@ public sealed class CodexProofreader(string directory) : IDisposable
             owner = new Connection(Process.Start(processStart?.Invoke() ?? start) ?? throw new IOException("Codex konnte nicht gestartet werden.")); connection = owner;
             owner.Process.ErrorDataReceived += (_, _) => { }; owner.Process.BeginErrorReadLine();
             owner.Reader = ReadMessages(owner);
-            await Request(owner, "initialize", new { clientInfo = new { name = "schreibatelier", version = "0.1.0" }, capabilities = new { experimentalApi = true } });
+            await Request(owner, "initialize", new { clientInfo = new { name = "schreibatelier", version = "0.2.0-beta.1" }, capabilities = new { experimentalApi = true } });
             await Send(owner, new { method = "initialized" });
             return owner;
         }

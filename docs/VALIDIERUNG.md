@@ -1,4 +1,19 @@
-# Validierung – Alpha 6 (0.1.0-alpha.6)
+# Validierung – Beta 1 (0.2.0-beta.1)
+
+## Release-Abnahme Beta 1, 2. Oktober 2026
+
+Ausgehend vom geprüften Review-Stand `4b713fd` auf `main`. Für `0.2.0-beta.1` wurden Versionsangaben, Beta-Kennzeichnung und Begleitdokumente angepasst. Projektformat, Datenbankschema und Bibliotheksversionen bleiben unverändert.
+
+- **TypeScript, Web-Build und selbstständiger Windows-Release-Build bestanden.** Die EXE meldet `0.2.0-beta.1`, Oberfläche und Installer zeigen Beta 1. Das Lizenzinventar bestätigt weiterhin **71 Komponenten**. Protokolle: `artifacts/beta1-build.log`, `artifacts/beta1-final-build.log`, `artifacts/beta1-checks-build.log`, `artifacts/beta1-proof-build.log`.
+- **252 Core-/Konverterprüfungen, 64 Sprachprüfungen, 23 Updateprüfungen und 28 JavaScript-Prüfungen bestanden.** Nachweise: `artifacts/beta1-core-checks.log`, `artifacts/beta1-proof-checks.log`, `artifacts/beta1-update-checks.log`, `artifacts/beta1-web-checks.log`. Die Sprachprüfungen verwenden Fake-Codex-/Premium-Fälle und die echte lokale LanguageTool-Laufzeit.
+- **87 Edge-Oberflächentests bestanden**, ohne Fehler, übersprungene Fälle oder Wiederholungen: `artifacts/beta1-ui.json`, `artifacts/beta1-ui.log`. Nach dem letzten Abgleich der Versionskennzeichnungen wurden die betroffenen Proof-/UI-Prüfungen erneut ausgeführt.
+- **23 native WPF/WebView2-Durchläufe am endgültigen Programmstand bestanden**, einschließlich fehlerhafter und gültiger Unicode-Einstellungen, unveränderter Ausgangsdateien, atomarer Speicherfehler, Storewechsel und Neustart. Zusätzlich wurden bei jedem Start die Beta-Kennzeichnung und die Versionsantwort der Bridge geprüft. Ergebnisse: `artifacts/beta1-native.json`, `artifacts/beta1-native.log`; isolierte Daten unter `.work/review-native/acd98d9b-0724-4c69-8f9b-e42d769e688c`.
+- **Native Paketprüfung bestanden:** portabler Start, Ordnerumzug, vollständiger Neustart, Installation, Start der installierten Anwendung und Deinstallation. Echte lokale Sprachprüfung, Karten, Stilanalyse, Zeitstrahl und Beziehungsnetz blieben funktionsfähig; Testprojekte und Benutzerdaten überstanden die Deinstallation. Protokoll: `artifacts/beta1-package-checks.log`; Testordner `.work/release-check/e9f116738669473ab7dc637f3c11ef89`.
+- **Testprozesse und temporäre Installation vollständig beendet beziehungsweise entfernt.** Nachweis: `artifacts/beta1-processes.json`. Keine Änderung von Windows-Sicherheitsrichtlinien.
+
+Das geprüfte Webbundle stimmt per SHA-256 mit dem Release-Bundle überein (`C985273237954F234843F3108EBA32957B360017E8DBFC415241DF833A77CB85`). Die abschließende Paketierung ergänzt diese Begleitdokumentation bei unverändertem Programmstand; Inhalts- und Prüfsummenabgleich: `artifacts/beta1-final-integrity.json`.
+
+Die Pakete sind **nicht digital signiert** und benötigen Microsoft Edge WebView2 Runtime. Keine Abnahme auf einem zweiten Rechner oder für längere Alltagsnutzung. Echte Premium-/Codex-Anmeldungen sind nicht Bestandteil dieses Testnachweises. Frühere Abnahmen und ihre damaligen Grenzen bleiben nachfolgend getrennt erhalten.
 
 ## Abschluss F13: Unicode in unbekannten Einstellungen, 28. September 2026
 
